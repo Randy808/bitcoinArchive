@@ -254,15 +254,34 @@ public:
         return vch;
     }
 
+
+    //Compressing an unisgned int
+    //This method reads in nCompact into the data structure by changing it first into characters
     CBigNum& SetCompact(unsigned int nCompact)
     {
+        //bit shifting 24 bits?
+        //that's 3 bytes and an int is 4
         unsigned int nSize = nCompact >> 24;
+
+        //Make a vector that's 4 + (the bit shifted number)
         std::vector<unsigned char> vch(4 + nSize);
+
+        //The 3rd position is the size
         vch[3] = nSize;
+
+        //If there's 25 or more bits then shift original by another 2 bits and mask by 255 (to get 2nd byte from left)
         if (nSize >= 1) vch[4] = (nCompact >> 16) & 0xff;
+
+         //If there's 26 or more bits then shift by another 8 bits and mask by 255 (to get 3rd byte from left)
         if (nSize >= 2) vch[5] = (nCompact >> 8) & 0xff;
+
+         //If there's 27 or more bits then shift by 0 bits and mask by 255
         if (nSize >= 3) vch[6] = (nCompact >> 0) & 0xff;
+
+        //Stores the characters into this data structure
         BN_mpi2bn(&vch[0], vch.size(), this);
+
+        //return this BigNum
         return *this;
     }
 

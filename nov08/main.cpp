@@ -21,10 +21,6 @@
 #include "headers.h"
 #include "sha.h"
 
-
-
-
-
 //
 // Global state
 //
@@ -35,44 +31,33 @@ unsigned int nTransactionsUpdated = 0;
 /// mapNextTx is only used anymore to track disk tx outpoints used by memory txes
 map<COutPoint, CInPoint> mapNextTx;
 
-map<uint256, CBlockIndex*> mapBlockIndex;
+map<uint256, CBlockIndex *> mapBlockIndex;
 const uint256 hashGenesisBlock("0x000006b15d1327d67e971d1de9116bd60a3a01556c91b6ebaa416ebc0cfaa646");
-CBlockIndex* pindexGenesisBlock = NULL;
+CBlockIndex *pindexGenesisBlock = NULL;
 int nBestHeight = -1;
 uint256 hashTimeChainBest = 0;
-CBlockIndex* pindexBest = NULL;
+CBlockIndex *pindexBest = NULL;
 
-map<uint256, CBlock*> mapOrphanBlocks;
-multimap<uint256, CBlock*> mapOrphanBlocksByPrev;
+map<uint256, CBlock *> mapOrphanBlocks;
+multimap<uint256, CBlock *> mapOrphanBlocksByPrev;
 
 map<uint256, CWalletTx> mapWallet;
-vector<pair<uint256, bool> > vWalletUpdated;
+vector<pair<uint256, bool>> vWalletUpdated;
 CCriticalSection cs_mapWallet;
 
 map<vector<unsigned char>, CPrivKey> mapKeys;
-map<uint160, vector<unsigned char> > mapPubKeys;
+map<uint160, vector<unsigned char>> mapPubKeys;
 CCriticalSection cs_mapKeys;
 CKey keyUser;
 
 int fGenerateBitcoins;
-
-
-
-
-
-
-
-
-
-
-
 
 //////////////////////////////////////////////////////////////////////////////
 //
 // mapKeys
 //
 
-bool AddKey(const CKey& key)
+bool AddKey(const CKey &key)
 {
     CRITICAL_BLOCK(cs_mapKeys)
     {
@@ -91,22 +76,19 @@ vector<unsigned char> GenerateNewKey()
     return key.GetPubKey();
 }
 
-
-
-
 //////////////////////////////////////////////////////////////////////////////
 //
 // mapWallet
 //
 
-bool AddToWallet(const CWalletTx& wtxIn)
+bool AddToWallet(const CWalletTx &wtxIn)
 {
     uint256 hash = wtxIn.GetHash();
     CRITICAL_BLOCK(cs_mapWallet)
     {
         // Inserts only if not already there, returns tx inserted or tx found
         pair<map<uint256, CWalletTx>::iterator, bool> ret = mapWallet.insert(make_pair(hash, wtxIn));
-        CWalletTx& wtx = (*ret.first).second;
+        CWalletTx &wtx = (*ret.first).second;
         bool fInsertedNew = ret.second;
 
         //// debug print
@@ -148,7 +130,7 @@ bool AddToWallet(const CWalletTx& wtxIn)
     return true;
 }
 
-bool AddToWalletIfMine(const CTransaction& tx, const CBlock* pblock)
+bool AddToWalletIfMine(const CTransaction &tx, const CBlock *pblock)
 {
     if (tx.IsMine())
     {
@@ -173,9 +155,9 @@ void ReacceptWalletTransactions()
     CRITICAL_BLOCK(cs_mapWallet)
     {
         CTxDB txdb("r");
-        foreach(PAIRTYPE(const uint256, CWalletTx)& item, mapWallet)
+        foreach (PAIRTYPE(const uint256, CWalletTx) & item, mapWallet)
         {
-            CWalletTx& wtx = item.second;
+            CWalletTx &wtx = item.second;
             if (!txdb.ContainsTx(wtx.GetHash()))
                 wtx.AcceptWalletTransaction(txdb, false);
         }
@@ -193,20 +175,10 @@ void RelayWalletTransactions()
     CRITICAL_BLOCK(cs_mapWallet)
     {
         CTxDB txdb("r");
-        foreach(PAIRTYPE(const uint256, CWalletTx)& item, mapWallet)
+        foreach (PAIRTYPE(const uint256, CWalletTx) & item, mapWallet)
             item.second.RelayWalletTransaction(txdb);
     }
 }
-
-
-
-
-
-
-
-
-
-
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -218,7 +190,7 @@ bool CTxIn::IsMine() const
     map<uint256, CWalletTx>::iterator mi = mapWallet.find(prevout.hash);
     if (mi != mapWallet.end())
     {
-        const CWalletTx& prev = (*mi).second;
+        const CWalletTx &prev = (*mi).second;
         if (prevout.n < prev.vout.size())
             if (prev.vout[prevout.n].IsMine())
                 return true;
@@ -231,16 +203,13 @@ int64 CTxIn::GetDebit() const
     map<uint256, CWalletTx>::iterator mi = mapWallet.find(prevout.hash);
     if (mi != mapWallet.end())
     {
-        const CWalletTx& prev = (*mi).second;
+        const CWalletTx &prev = (*mi).second;
         if (prevout.n < prev.vout.size())
             if (prev.vout[prevout.n].IsMine())
                 return prev.vout[prevout.n].nValue;
     }
     return 0;
 }
-
-
-
 
 int CMerkleTx::SetMerkleBranch()
 {
@@ -264,7 +233,7 @@ int CMerkleTx::SetMerkleBranch()
 
         // Locate the transaction
         for (nIndex = 0; nIndex < block.vtx.size(); nIndex++)
-            if (block.vtx[nIndex] == *(CTransaction*)this)
+            if (block.vtx[nIndex] == *(CTransaction *)this)
                 break;
         if (nIndex == block.vtx.size())
         {
@@ -279,17 +248,17 @@ int CMerkleTx::SetMerkleBranch()
     }
 
     // Is the tx in a block that's in the main chain
-    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashBlock);
+    map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.find(hashBlock);
     if (mi == mapBlockIndex.end())
         return 0;
-    CBlockIndex* pindex = (*mi).second;
+    CBlockIndex *pindex = (*mi).second;
     if (!pindex || !pindex->IsInMainChain())
         return 0;
 
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
-void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
+void CWalletTx::AddSupportingTransactions(CTxDB &txdb)
 {
     vtxPrev.clear();
 
@@ -297,10 +266,10 @@ void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
     if (SetMerkleBranch() < COPY_DEPTH)
     {
         vector<uint256> vWorkQueue;
-        foreach(const CTxIn& txin, vin)
+        foreach (const CTxIn &txin, vin)
             vWorkQueue.push_back(txin.prevout.hash);
 
-        map<uint256, const CMerkleTx*> mapWalletPrev;
+        map<uint256, const CMerkleTx *> mapWalletPrev;
         set<uint256> setAlreadyDone;
         for (int i = 0; i < vWorkQueue.size(); i++)
         {
@@ -313,7 +282,7 @@ void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
             if (mapWallet.count(hash))
             {
                 tx = mapWallet[hash];
-                foreach(const CMerkleTx& txWalletPrev, mapWallet[hash].vtxPrev)
+                foreach (const CMerkleTx &txWalletPrev, mapWallet[hash].vtxPrev)
                     mapWalletPrev[txWalletPrev.GetHash()] = &txWalletPrev;
             }
             else if (mapWalletPrev.count(hash))
@@ -334,7 +303,7 @@ void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
             vtxPrev.push_back(tx);
 
             if (nDepth < COPY_DEPTH)
-                foreach(const CTxIn& txin, tx.vin)
+                foreach (const CTxIn &txin, tx.vin)
                     vWorkQueue.push_back(txin.prevout.hash);
         }
     }
@@ -342,27 +311,18 @@ void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
     reverse(vtxPrev.begin(), vtxPrev.end());
 }
 
-
-
-
-
-
-
-
-
-
-bool CTransaction::DisconnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTestPool, bool fTest)
+bool CTransaction::DisconnectInputs(CTxDB &txdb, map<uint256, CTransaction> &mapTestPool, bool fTest)
 {
     // Relinquish previous transactions' posNext pointers
     if (!IsCoinBase())
     {
-        foreach(const CTxIn& txin, vin)
+        foreach (const CTxIn &txin, vin)
         {
             COutPoint prevout = txin.prevout;
 
             CAutoFile fileout = NULL;
             CTransaction txPrevBuf;
-            CTransaction& txPrev = (fTest ? mapTestPool[prevout.hash] : txPrevBuf);
+            CTransaction &txPrev = (fTest ? mapTestPool[prevout.hash] : txPrevBuf);
             if (txPrev.IsNull())
             {
                 // Get prev tx from disk
@@ -387,9 +347,9 @@ bool CTransaction::DisconnectInputs(CTxDB& txdb, map<uint256, CTransaction>& map
     if (fTest)
     {
         // Put a blocked-off copy of this transaction in the test pool
-        CTransaction& txPool = mapTestPool[GetHash()];
+        CTransaction &txPool = mapTestPool[GetHash()];
         txPool = *this;
-        foreach(CTxOut& txout, txPool.vout)
+        foreach (CTxOut &txout, txPool.vout)
             txout.posNext = CDiskTxPos(1, 1, 1);
     }
     else
@@ -406,9 +366,8 @@ bool CTransaction::DisconnectInputs(CTxDB& txdb, map<uint256, CTransaction>& map
     return true;
 }
 
-
-bool CTransaction::ConnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTestPool, CDiskTxPos posThisTx, int nHeight,
-                                 bool fTest, bool fMemoryTx, bool fIgnoreDiskConflicts, int64& nFees)
+bool CTransaction::ConnectInputs(CTxDB &txdb, map<uint256, CTransaction> &mapTestPool, CDiskTxPos posThisTx, int nHeight,
+                                 bool fTest, bool fMemoryTx, bool fIgnoreDiskConflicts, int64 &nFees)
 {
     // Take over previous transactions' posNext pointers
     if (!IsCoinBase())
@@ -420,7 +379,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTes
 
             CAutoFile fileout = NULL;
             CTransaction txPrevBuf;
-            CTransaction& txPrev = (fTest ? mapTestPool[prevout.hash] : txPrevBuf);
+            CTransaction &txPrev = (fTest ? mapTestPool[prevout.hash] : txPrevBuf);
             if (txPrev.IsNull() && fTest && fMemoryTx && mapTransactions.count(prevout.hash))
             {
                 // Get prev tx from single transactions in memory
@@ -437,7 +396,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTes
                 // If tx will only be connected in a reorg,
                 // then these outpoints will be checked at that time
                 if (fIgnoreDiskConflicts)
-                    foreach(CTxOut& txout, txPrev.vout)
+                    foreach (CTxOut &txout, txPrev.vout)
                         txout.posNext.SetNull();
             }
 
@@ -483,7 +442,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTes
         // Delete redundant single transaction objects
         CRITICAL_BLOCK(cs_mapTransactions)
         {
-            foreach(const CTxIn& txin, vin)
+            foreach (const CTxIn &txin, vin)
                 mapNextTx.erase(txin.prevout);
             mapTransactions.erase(GetHash());
         }
@@ -492,10 +451,7 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, map<uint256, CTransaction>& mapTes
     return true;
 }
 
-
-
-
-bool CTransaction::AcceptTransaction(CTxDB& txdb, bool fCheckInputs)
+bool CTransaction::AcceptTransaction(CTxDB &txdb, bool fCheckInputs)
 {
     // Coinbase is only valid in a block, not as a loose transaction
     if (IsCoinBase())
@@ -510,7 +466,7 @@ bool CTransaction::AcceptTransaction(CTxDB& txdb, bool fCheckInputs)
 
     // Check for conflicts with in-memory transactions
     // and allow replacing with a newer version of the same transaction
-    CTransaction* ptxOld = NULL;
+    CTransaction *ptxOld = NULL;
     for (int i = 0; i < vin.size(); i++)
     {
         COutPoint outpoint = vin[i].prevout;
@@ -552,15 +508,11 @@ bool CTransaction::AcceptTransaction(CTxDB& txdb, bool fCheckInputs)
     // If updated, erase old tx from wallet
     if (ptxOld)
         CRITICAL_BLOCK(cs_mapWallet)
-            mapWallet.erase(ptxOld->GetHash());
+    mapWallet.erase(ptxOld->GetHash());
 
     nTransactionsUpdated++;
     return true;
 }
-
-
-
-
 
 int CMerkleTx::IsInMainChain() const
 {
@@ -568,10 +520,10 @@ int CMerkleTx::IsInMainChain() const
         return 0;
 
     // Find the block it claims to be in
-    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashBlock);
+    map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.find(hashBlock);
     if (mi == mapBlockIndex.end())
         return 0;
-    CBlockIndex* pindex = (*mi).second;
+    CBlockIndex *pindex = (*mi).second;
     if (!pindex || !pindex->IsInMainChain())
         return 0;
 
@@ -587,64 +539,174 @@ int CMerkleTx::IsInMainChain() const
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
-
-
-bool CMerkleTx::AcceptTransaction(CTxDB& txdb, bool fCheckInputs)
+//Accepts the transaction for a client if the transaction is not in a main chain and not clientConnectInputs (whatever that is), and accepts the transaction unconditionally otherwise.
+bool CMerkleTx::AcceptTransaction(CTxDB &txdb, bool fCheckInputs)
 {
+
+    //Weird that fCheckInputs is a bool since a boolen prefix is usually 'b' in hungarian notation
+
+    //What is an fClient?
+    //If client?
     if (fClient)
     {
+        //Transaction must be in mainchain and not have client connect inputs to be accepted?
         if (!IsInMainChain() && !ClientConnectInputs())
             return false;
+
+        //Inputs need not be checked if it's a client?
         return CTransaction::AcceptTransaction(txdb, false);
     }
     else
     {
+        //Calls base class's accept tranaction if not client
         return CTransaction::AcceptTransaction(txdb, fCheckInputs);
     }
 }
 
-
-
-bool CWalletTx::AcceptWalletTransaction(CTxDB& txdb, bool fCheckInputs)
+//Accepts all source transactions, then accepts this instance transaction
+bool CWalletTx::AcceptWalletTransaction(CTxDB &txdb, bool fCheckInputs)
 {
-    foreach(CMerkleTx& tx, vtxPrev)
+    //locks mapTransactions using 'cs_mapTransactions'
+    CRITICAL_BLOCK(cs_mapTransactions)
     {
-        uint256 hash = tx.GetHash();
-        if (!mapTransactions.count(hash) && !txdb.ContainsTx(hash))
-            tx.AcceptTransaction(txdb, fCheckInputs);
+        //iterating through all source transactions
+        foreach (CMerkleTx &tx, vtxPrev)
+        {
+            //if the source transaction isn't a coinbase (which I think is just the first transaction in a block?)
+            if (!tx.IsCoinBase())
+            {
+                //Get the hash of the transaction
+                uint256 hash = tx.GetHash();
+
+                //If the source transaction can't be found in local mapTransactions or txdb
+                if (!mapTransactions.count(hash) && !txdb.ContainsTx(hash))
+                    //Just accept the transaction to transfer it
+                    tx.AcceptTransaction(txdb, fCheckInputs);
+            }
+        }
+
+        //If this transaction isn't a coinbase
+        if (!IsCoinBase())
+            //accept the transaction
+            return AcceptTransaction(txdb, fCheckInputs);
     }
-    return AcceptTransaction(txdb, fCheckInputs);
+    return true;
 }
 
-
-void CWalletTx::RelayWalletTransaction(CTxDB& txdb)
+//Looks through all transactions in walletMap and accepts the ones that aren't in the transaction db
+void ReacceptWalletTransactions()
 {
-    foreach(CMerkleTx& tx, vtxPrev)
+    //SATOSHI_START
+    // Reaccept any txes of ours that aren't already in a block
+    //SATOSHI_END
+
+    //open transaction db to read it?
+    CTxDB txdb("r");
+    CRITICAL_BLOCK(cs_mapWallet)
     {
-        uint256 hash = tx.GetHash();
+        //for each entry in mapWallet
+        foreach (PAIRTYPE(const uint256, CWalletTx) & item, mapWallet)
+        {
+            //Take the transaction object
+            CWalletTx &wtx = item.second;
+
+            //if it's not a coinbase and if it's not present in the transaction db
+            if (!wtx.IsCoinBase() && !txdb.ContainsTx(wtx.GetHash()))
+                //Accept the transaction
+                wtx.AcceptWalletTransaction(txdb, false);
+        }
+    }
+}
+
+//Relay all source transactions  (using RelayMessage) if not in db, then try to relay this transaction
+void CWalletTx::RelayWalletTransaction(CTxDB &txdb)
+{
+
+    //For every source transaction
+    foreach (const CMerkleTx &tx, vtxPrev)
+    {
+        //If the transaction isn't a coinbase
+        if (!tx.IsCoinBase())
+        {
+            //Get the hash
+            uint256 hash = tx.GetHash();
+            //If the transaction db doesn't contain the hash
+            if (!txdb.ContainsTx(hash))
+                //Relay Message it (I imagine this means to broadcast?)
+                RelayMessage(CInv(MSG_TX, hash), (CTransaction)tx);
+        }
+    }
+
+    //If not coin base
+    if (!IsCoinBase())
+    {
+        //get hash of this transaction
+        uint256 hash = GetHash();
+
+        //if db doesn't contain this transaction
         if (!txdb.ContainsTx(hash))
-            RelayMessage(CInv(MSG_TX, hash), (CTransaction)tx);
+        {
+            printf("Relaying wtx %s\n", hash.ToString().substr(0, 6).c_str());
+            //relay this transaction
+            RelayMessage(CInv(MSG_TX, hash), (CTransaction) * this);
+        }
     }
-    uint256 hash = GetHash();
-    if (!txdb.ContainsTx(hash))
-        RelayMessage(CInv(MSG_TX, hash), (CTransaction)*this);
 }
 
+//Tries to call RelayWalletTransaction in order on every wallet in mapWallet
+void RelayWalletTransactions()
+{
 
+    //This is static so should be 0-initialized
+    static int64 nLastTime;
 
+    //If the time difference between now and the last time this was run is less than 600(ms?)
+    if (GetTime() - nLastTime < 10 * 60)
+        //terminate
+        return;
 
+    //Change the last time this was run to now
+    nLastTime = GetTime();
 
+    //SATOSHI_START
+    // Rebroadcast any of our txes that aren't in a block yet
+    //SATOSHI_END
+    printf("RelayWalletTransactions()\n");
+    CTxDB txdb("r");
+    CRITICAL_BLOCK(cs_mapWallet)
+    {
+        //SATOSHI_START
+        // Sort them in chronological order
+        //SATOSHI_END
 
+        //Not sure how multimap works
+        multimap<unsigned int, CWalletTx *> mapSorted;
 
-
-
+        //for each transaction in wallet
+        foreach (PAIRTYPE(const uint256, CWalletTx) & item, mapWallet)
+        {
+            //get the transaction
+            CWalletTx &wtx = item.second;
+            //and put it in mapSorted
+            mapSorted.insert(make_pair(wtx.nTimeReceived, &wtx));
+        }
+        //For every sorted transaction
+        foreach (PAIRTYPE(const unsigned int, CWalletTx *) & item, mapSorted)
+        {
+            //get the transaction
+            CWalletTx &wtx = *item.second;
+            //and relay the transaction to db
+            wtx.RelayWalletTransaction(txdb);
+        }
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //
 // CBlock and CBlockIndex
 //
 
-bool CBlock::ReadFromDisk(const CBlockIndex* pblockindex, bool fReadTransactions)
+bool CBlock::ReadFromDisk(const CBlockIndex *pblockindex, bool fReadTransactions)
 {
     return ReadFromDisk(pblockindex->nFile, pblockindex->nBlockPos, fReadTransactions);
 }
@@ -657,22 +719,22 @@ int64 GetBlockValue(int64 nFees)
     return nSubsidy + nFees;
 }
 
-unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast)
+unsigned int GetNextWorkRequired(const CBlockIndex *pindexLast)
 {
     const unsigned int nTargetTimespan = 30 * 24 * 60 * 60;
     const unsigned int nTargetSpacing = 15 * 60;
     const unsigned int nIntervals = nTargetTimespan / nTargetSpacing;
 
     // Cache
-    static const CBlockIndex* pindexLastCache;
+    static const CBlockIndex *pindexLastCache;
     static unsigned int nBitsCache;
     static CCriticalSection cs_cache;
     CRITICAL_BLOCK(cs_cache)
-        if (pindexLast && pindexLast == pindexLastCache)
-            return nBitsCache;
+    if (pindexLast && pindexLast == pindexLastCache)
+        return nBitsCache;
 
     // Go back 30 days
-    const CBlockIndex* pindexFirst = pindexLast;
+    const CBlockIndex *pindexFirst = pindexLast;
     for (int i = 0; pindexFirst && i < nIntervals; i++)
         pindexFirst = pindexFirst->pprev;
     if (pindexFirst == NULL)
@@ -705,7 +767,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast)
     return nBits;
 }
 
-uint256 GetOrphanRoot(const CBlock* pblock)
+uint256 GetOrphanRoot(const CBlock *pblock)
 {
     // Work back to the first block in the orphan chain
     while (mapOrphanBlocks.count(pblock->hashPrevBlock))
@@ -713,26 +775,18 @@ uint256 GetOrphanRoot(const CBlock* pblock)
     return pblock->hashPrevBlock;
 }
 
-
-
-
-
-
-
-
-
-bool CBlock::TestDisconnectBlock(CTxDB& txdb, map<uint256, CTransaction>& mapTestPool)
+bool CBlock::TestDisconnectBlock(CTxDB &txdb, map<uint256, CTransaction> &mapTestPool)
 {
-    foreach(CTransaction& tx, vtx)
+    foreach (CTransaction &tx, vtx)
         if (!tx.TestDisconnectInputs(txdb, mapTestPool))
             return false;
     return true;
 }
 
-bool CBlock::TestConnectBlock(CTxDB& txdb, map<uint256, CTransaction>& mapTestPool)
+bool CBlock::TestConnectBlock(CTxDB &txdb, map<uint256, CTransaction> &mapTestPool)
 {
     int64 nFees = 0;
-    foreach(CTransaction& tx, vtx)
+    foreach (CTransaction &tx, vtx)
         if (!tx.TestConnectInputs(txdb, mapTestPool, false, false, nFees))
             return false;
 
@@ -744,7 +798,7 @@ bool CBlock::TestConnectBlock(CTxDB& txdb, map<uint256, CTransaction>& mapTestPo
 bool CBlock::DisconnectBlock()
 {
     CTxDB txdb;
-    foreach(CTransaction& tx, vtx)
+    foreach (CTransaction &tx, vtx)
         if (!tx.DisconnectInputs(txdb))
             return false;
     return true;
@@ -756,7 +810,7 @@ bool CBlock::ConnectBlock(unsigned int nFile, unsigned int nBlockPos, int nHeigh
     unsigned int nTxPos = nBlockPos + ::GetSerializeSize(CBlock(), SER_DISK) - 1 + GetSizeOfCompactSize(vtx.size());
 
     CTxDB txdb;
-    foreach(CTransaction& tx, vtx)
+    foreach (CTransaction &tx, vtx)
     {
         CDiskTxPos posThisTx(nFile, nBlockPos, nTxPos);
         nTxPos += ::GetSerializeSize(tx, SER_DISK);
@@ -767,19 +821,17 @@ bool CBlock::ConnectBlock(unsigned int nFile, unsigned int nBlockPos, int nHeigh
     txdb.Close();
 
     // Watch for transactions paying to me
-    foreach(CTransaction& tx, vtx)
+    foreach (CTransaction &tx, vtx)
         AddToWalletIfMine(tx, this);
 
     return true;
 }
 
-
-
-bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
+bool Reorganize(CBlockIndex *pindexNew, bool fWriteDisk)
 {
     // Find the fork
-    CBlockIndex* pfork = pindexBest;
-    CBlockIndex* plonger = pindexNew;
+    CBlockIndex *pfork = pindexBest;
+    CBlockIndex *plonger = pindexNew;
     while (pfork != plonger)
     {
         if (!(pfork = pfork->pprev))
@@ -790,13 +842,13 @@ bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
     }
 
     // List of what to disconnect
-    vector<CBlockIndex*> vDisconnect;
-    for (CBlockIndex* pindex = pindexBest; pindex != pfork; pindex = pindex->pprev)
+    vector<CBlockIndex *> vDisconnect;
+    for (CBlockIndex *pindex = pindexBest; pindex != pfork; pindex = pindex->pprev)
         vDisconnect.push_back(pindex);
 
     // List of what to connect
-    vector<CBlockIndex*> vConnect;
-    for (CBlockIndex* pindex = pindexNew; pindex != pfork; pindex = pindex->pprev)
+    vector<CBlockIndex *> vConnect;
+    for (CBlockIndex *pindex = pindexNew; pindex != pfork; pindex = pindex->pprev)
         vConnect.push_back(pindex);
     reverse(vConnect.begin(), vConnect.end());
 
@@ -806,12 +858,12 @@ bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
         CTxDB txdb("r");
         map<uint256, CTransaction> mapTestPool;
 
-        foreach(CBlockIndex* pindex, vDisconnect)
+        foreach (CBlockIndex *pindex, vDisconnect)
             if (!pindex->TestDisconnectBlock(txdb, mapTestPool))
                 return false;
 
         bool fValid = true;
-        foreach(CBlockIndex* pindex, vConnect)
+        foreach (CBlockIndex *pindex, vConnect)
         {
             fValid = fValid && pindex->TestConnectBlock(txdb, mapTestPool);
             if (!fValid)
@@ -829,7 +881,7 @@ bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
     }
 
     // Disconnect shorter branch
-    foreach(CBlockIndex* pindex, vDisconnect)
+    foreach (CBlockIndex *pindex, vDisconnect)
     {
         if (fWriteDisk && !pindex->DisconnectBlock())
             return false;
@@ -838,7 +890,7 @@ bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
     }
 
     // Connect longer branch
-    foreach(CBlockIndex* pindex, vConnect)
+    foreach (CBlockIndex *pindex, vConnect)
     {
         if (fWriteDisk && !pindex->ConnectBlock())
             return false;
@@ -849,17 +901,16 @@ bool Reorganize(CBlockIndex* pindexNew, bool fWriteDisk)
     return true;
 }
 
-
 bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos, bool fWriteDisk)
 {
     uint256 hash = GetHash();
 
     // Add to block index
-    CBlockIndex* pindexNew = new CBlockIndex(nFile, nBlockPos);
+    CBlockIndex *pindexNew = new CBlockIndex(nFile, nBlockPos);
     if (!pindexNew)
         return false;
     mapBlockIndex[hash] = pindexNew;
-    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashPrevBlock);
+    map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.find(hashPrevBlock);
     if (mi != mapBlockIndex.end())
     {
         pindexNew->pprev = (*mi).second;
@@ -903,18 +954,14 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos, bool fW
     return true;
 }
 
-
-
-
-
-template<typename Stream>
-bool ScanMessageStart(Stream& s)
+template <typename Stream>
+bool ScanMessageStart(Stream &s)
 {
     // Scan ahead to the next pchMessageStart, which should normally be immediately
     // at the file pointer.  Leaves file pointer at end of pchMessageStart.
     s.clear(0);
     short prevmask = s.exceptions(0);
-    const char* p = BEGIN(pchMessageStart);
+    const char *p = BEGIN(pchMessageStart);
     try
     {
         loop
@@ -948,11 +995,11 @@ bool ScanMessageStart(Stream& s)
     }
 }
 
-FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode)
+FILE *OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char *pszMode)
 {
     if (nFile == -1)
         return NULL;
-    FILE* file = fopen(strprintf("blk%04d.dat", nFile).c_str(), pszMode);
+    FILE *file = fopen(strprintf("blk%04d.dat", nFile).c_str(), pszMode);
     if (!file)
         return NULL;
     if (nBlockPos != 0 && !strchr(pszMode, 'a') && !strchr(pszMode, 'w'))
@@ -968,12 +1015,12 @@ FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszM
 
 static unsigned int nCurrentBlockFile = 1;
 
-FILE* AppendBlockFile(unsigned int& nFileRet)
+FILE *AppendBlockFile(unsigned int &nFileRet)
 {
     nFileRet = 0;
     loop
     {
-        FILE* file = OpenBlockFile(nCurrentBlockFile, 0, "ab");
+        FILE *file = OpenBlockFile(nCurrentBlockFile, 0, "ab");
         if (!file)
             return NULL;
         if (fseek(file, 0, SEEK_END) != 0)
@@ -1028,24 +1075,24 @@ bool LoadBlockIndex(bool fAllowNew)
             CTransaction txNew;
             txNew.vin.resize(1);
             txNew.vout.resize(1);
-            txNew.vin[0].scriptSig     = CScript() << 247422313;
-            txNew.vout[0].nValue       = 10000;
+            txNew.vin[0].scriptSig = CScript() << 247422313;
+            txNew.vout[0].nValue = 10000;
             txNew.vout[0].scriptPubKey = CScript() << OP_CODESEPARATOR << CBigNum("0x31D18A083F381B4BDE37B649AACF8CD0AFD88C53A3587ECDB7FAF23D449C800AF1CE516199390BFE42991F10E7F5340F2A63449F0B639A7115C667E5D7B051D404") << OP_CHECKSIG;
             CBlock block;
             block.vtx.push_back(txNew);
             block.hashPrevBlock = 0;
             block.hashMerkleRoot = block.BuildMerkleTree();
-            block.nTime  = 1221069728;
-            block.nBits  = 20;
+            block.nTime = 1221069728;
+            block.nBits = 20;
             block.nNonce = 141755;
 
-                //// debug print
-                printf("%s\n", block.GetHash().ToString().c_str());
-                printf("%s\n", block.hashMerkleRoot.ToString().c_str());
-                printf("%s\n", hashGenesisBlock.ToString().c_str());
-                txNew.vout[0].scriptPubKey.print();
-                block.print();
-                assert(block.hashMerkleRoot == uint256("0x769a5e93fac273fd825da42d39ead975b5d712b2d50953f35a4fdebdec8083e3"));
+            //// debug print
+            printf("%s\n", block.GetHash().ToString().c_str());
+            printf("%s\n", block.hashMerkleRoot.ToString().c_str());
+            printf("%s\n", hashGenesisBlock.ToString().c_str());
+            txNew.vout[0].scriptPubKey.print();
+            block.print();
+            assert(block.hashMerkleRoot == uint256("0x769a5e93fac273fd825da42d39ead975b5d712b2d50953f35a4fdebdec8083e3"));
 
             assert(block.GetHash() == hashGenesisBlock);
 
@@ -1089,35 +1136,33 @@ bool LoadBlockIndex(bool fAllowNew)
     return true;
 }
 
-
-
 void PrintTimechain()
 {
     // precompute tree structure
-    map<CBlockIndex*, vector<CBlockIndex*> > mapNext;
-    for (map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.begin(); mi != mapBlockIndex.end(); ++mi)
+    map<CBlockIndex *, vector<CBlockIndex *>> mapNext;
+    for (map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.begin(); mi != mapBlockIndex.end(); ++mi)
     {
-        CBlockIndex* pindex = (*mi).second;
+        CBlockIndex *pindex = (*mi).second;
         mapNext[pindex->pprev].push_back(pindex);
         // test
         //while (rand() % 3 == 0)
         //    mapNext[pindex->pprev].push_back(pindex);
     }
 
-    vector<pair<int, CBlockIndex*> > vStack;
+    vector<pair<int, CBlockIndex *>> vStack;
     vStack.push_back(make_pair(0, pindexGenesisBlock));
 
     int nPrevCol = 0;
     while (!vStack.empty())
     {
         int nCol = vStack.back().first;
-        CBlockIndex* pindex = vStack.back().second;
+        CBlockIndex *pindex = vStack.back().second;
         vStack.pop_back();
 
         // print split or gap
         if (nCol > nPrevCol)
         {
-            for (int i = 0; i < nCol-1; i++)
+            for (int i = 0; i < nCol - 1; i++)
                 printf("| ");
             printf("|\\\n");
         }
@@ -1137,7 +1182,7 @@ void PrintTimechain()
         printf("%d (%u,%u)\n", pindex->nHeight, pindex->nFile, pindex->nBlockPos);
 
         // put the main timechain first
-        vector<CBlockIndex*>& vNext = mapNext[pindex];
+        vector<CBlockIndex *> &vNext = mapNext[pindex];
         for (int i = 0; i < vNext.size(); i++)
         {
             if (vNext[i]->pnext)
@@ -1149,14 +1194,9 @@ void PrintTimechain()
 
         // iterate children
         for (int i = 0; i < vNext.size(); i++)
-            vStack.push_back(make_pair(nCol+i, vNext[i]));
+            vStack.push_back(make_pair(nCol + i, vNext[i]));
     }
 }
-
-
-
-
-
 
 bool CBlock::CheckBlock() const
 {
@@ -1182,7 +1222,7 @@ bool CBlock::CheckBlock() const
             return error("CheckBlock() : more than one coinbase");
 
     // Check transactions
-    foreach(const CTransaction& tx, vtx)
+    foreach (const CTransaction &tx, vtx)
         if (!tx.CheckTransaction())
             return error("CheckBlock() : CheckTransaction failed");
 
@@ -1201,10 +1241,10 @@ bool CBlock::AcceptBlock()
         return false;
 
     // Get prev block index
-    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashPrevBlock);
+    map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.find(hashPrevBlock);
     if (mi == mapBlockIndex.end())
         return false;
-    CBlockIndex* pindexPrev = (*mi).second;
+    CBlockIndex *pindexPrev = (*mi).second;
 
     // Check timestamp against prev
     CBlock blockPrev;
@@ -1223,7 +1263,7 @@ bool CBlock::AcceptBlock()
         map<uint256, CTransaction> mapTestPool;
         bool fIgnoreDiskConflicts = (hashPrevBlock != hashTimeChainBest);
         int64 nFees = 0;
-        foreach(CTransaction& tx, vtx)
+        foreach (CTransaction &tx, vtx)
             if (!tx.TestConnectInputs(txdb, mapTestPool, false, fIgnoreDiskConflicts, nFees))
                 return error("AcceptBlock() : TestConnectInputs failed");
         if (vtx[0].GetValueOut() != GetBlockValue(nFees))
@@ -1246,7 +1286,7 @@ bool CBlock::AcceptBlock()
     if (ExtractPubKey(vtx[0].vout[0].scriptPubKey, false, vchPubKey))
     {
         uint64 nRand = 0;
-        RAND_bytes((unsigned char*)&nRand, sizeof(nRand));
+        RAND_bytes((unsigned char *)&nRand, sizeof(nRand));
         unsigned short nAtom = nRand % (USHRT_MAX - 100) + 100;
         vector<unsigned short> vAtoms(1, nAtom);
         AddAtomsAndPropagate(Hash(vchPubKey.begin(), vchPubKey.end()), vAtoms, true);
@@ -1255,7 +1295,7 @@ bool CBlock::AcceptBlock()
     return true;
 }
 
-bool ProcessBlock(CNode* pfrom, CBlock* pblock)
+bool ProcessBlock(CNode *pfrom, CBlock *pblock)
 {
     // Check for duplicate
     uint256 hash = pblock->GetHash();
@@ -1292,11 +1332,11 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     delete pblock;
 
     // Now process any orphan blocks that depended on this one
-    for (multimap<uint256, CBlock*>::iterator mi = mapOrphanBlocksByPrev.lower_bound(hash);
+    for (multimap<uint256, CBlock *>::iterator mi = mapOrphanBlocksByPrev.lower_bound(hash);
          mi != mapOrphanBlocksByPrev.upper_bound(hash);
          ++mi)
     {
-        CBlock* pblockOrphan = (*mi).second;
+        CBlock *pblockOrphan = (*mi).second;
         pblockOrphan->AcceptBlock();
         mapOrphanBlocks.erase(pblockOrphan->GetHash());
         delete pblockOrphan;

@@ -7,6 +7,11 @@
 #include <crtdbg.h>
 #endif
 
+/*Randy Comment
+
+wxwidgets
+
+*/
 
 
 DEFINE_EVENT_TYPE(wxEVT_CROSSTHREADCALL)
@@ -326,6 +331,7 @@ CMainFrame::CMainFrame(wxWindow* parent) : CMainFrameBase(parent)
     int pnWidths[3] = { -100, 81, 286 };
     m_statusBar->SetFieldsCount(3, pnWidths);
 
+    //MAYBE
     // Fill your address text box
     vector<unsigned char> vchPubKey;
     if (CWalletDB("r").ReadDefaultKey(vchPubKey))
@@ -429,6 +435,8 @@ string FormatTxStatus(const CWalletTx& wtx)
         return strprintf("%d blocks", nDepth);
 }
 
+
+//MAYBE?
 void CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
 {
     int64 nTime = wtx.nTimeDisplayed = wtx.GetTxTime();
@@ -818,6 +826,8 @@ void CMainFrame::OnMenuFileExit(wxCommandEvent& event)
     Close(true);
 }
 
+//Maybe
+//Generate Bitcoins!
 void CMainFrame::OnMenuOptionsGenerate(wxCommandEvent& event)
 {
     fGenerateBitcoins = event.IsChecked();
@@ -1242,8 +1252,8 @@ CAboutDialog::CAboutDialog(wxWindow* parent) : CAboutDialogBase(parent)
 
     // Workaround until upgrade to wxWidgets supporting UTF-8
     wxString str = m_staticTextMain->GetLabel();
-    if (str.Find('Â') != wxNOT_FOUND)
-        str.Remove(str.Find('Â'), 1);
+    if (str.Find('ï¿½') != wxNOT_FOUND)
+        str.Remove(str.Find('ï¿½'), 1);
     m_staticTextMain->SetLabel(str);
 }
 
@@ -1571,6 +1581,7 @@ void SendingDialogStartTransfer(void* parg)
     ((CSendingDialog*)parg)->StartTransfer();
 }
 
+//Maybe?
 void CSendingDialog::StartTransfer()
 {
     // Make sure we have enough money
@@ -1601,6 +1612,8 @@ void SendingDialogOnReply2(void* parg, CDataStream& vRecv)
     ((CSendingDialog*)parg)->OnReply2(vRecv);
 }
 
+
+//MAYBE?
 void CSendingDialog::OnReply2(CDataStream& vRecv)
 {
     if (!Status("Received public key..."))
@@ -1704,6 +1717,7 @@ void SendingDialogOnReply3(void* parg, CDataStream& vRecv)
     ((CSendingDialog*)parg)->OnReply3(vRecv);
 }
 
+//MAYBE
 void CSendingDialog::OnReply3(CDataStream& vRecv)
 {
     int nRet;
@@ -1813,6 +1827,7 @@ void CYourAddressDialog::OnButtonRename(wxCommandEvent& event)
     pframeMain->RefreshListCtrl();
 }
 
+//MAYBE?
 void CYourAddressDialog::OnButtonNew(wxCommandEvent& event)
 {
     // Ask name
@@ -1967,6 +1982,7 @@ void CAddressBookDialog::OnButtonEdit(wxCommandEvent& event)
     pframeMain->RefreshListCtrl();
 }
 
+//MAYBE?
 void CAddressBookDialog::OnButtonNew(wxCommandEvent& event)
 {
     // Ask name
@@ -2847,6 +2863,7 @@ class CMyApp: public wxApp
 
 IMPLEMENT_APP(CMyApp)
 
+//Initializes app with OnInit2, this is just an exception wrapper method
 bool CMyApp::OnInit()
 {
     try
@@ -2882,6 +2899,7 @@ map<string, string> ParseParameters(int argc, char* argv[])
     return mapArgs;
 }
 
+//MAYBE?
 bool CMyApp::OnInit2()
 {
 #ifdef _MSC_VER
@@ -2890,26 +2908,40 @@ bool CMyApp::OnInit2()
     _CrtSetReportFile(_CRT_WARN, CreateFile("NUL", GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, 0));
 #endif
 
+    //SATOSHI_START
     //// debug print
+    //SAOSHI_END
     printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     printf("Bitcoin CMyApp::OnInit()\n");
 
+    //SATOSHI_START
     //
     // Limit to single instance per user
     // Required to protect the database files if we're going to keep deleting log.*
     //
+    //SATOSHI_END
     wxString strMutexName = wxString("Bitcoin.") + getenv("HOMEPATH");
     for (int i = 0; i < strMutexName.size(); i++)
+        //if character isn't alphanumeric, change it to a dot
         if (!isalnum(strMutexName[i]))
             strMutexName[i] = '.';
+
+    
+    //Class that ensure single instance of wx UI
     wxSingleInstanceChecker* psingleinstancechecker = new wxSingleInstanceChecker(strMutexName);
+
+    //Check if single instance of bitcoin is running (as per satoshi comment)
     if (psingleinstancechecker->IsAnotherRunning())
     {
         printf("Existing instance found\n");
         unsigned int nStart = GetTime();
+
+        //Keep truing to resume ongoing instace in loop
         loop
         {
+            //SATOSHI_START
             // Show the previous instance and exit
+            //SATOSHI_END
             HWND hwndPrev = FindWindow("wxWindowClassNR", "Bitcoin");
             if (hwndPrev)
             {
@@ -2922,7 +2954,9 @@ bool CMyApp::OnInit2()
             if (GetTime() > nStart + 60)
                 return false;
 
+            ////SATOSHI_START
             // Resume this instance if the other exits
+            //SATOSHI_END
             delete psingleinstancechecker;
             Sleep(1000);
             psingleinstancechecker = new wxSingleInstanceChecker(strMutexName);
@@ -2931,12 +2965,19 @@ bool CMyApp::OnInit2()
         }
     }
 
+    //SATOSHI_START
     //
     // Parameters
     //
+    //SATOSHI_END
+
+    //image setup stuff
     wxImage::AddHandler(new wxPNGHandler);
+
+    //Reading in terminal arguments
     map<string, string> mapArgs = ParseParameters(argc, argv);
 
+    //Setting up global vars according to args
     if (mapArgs.count("/datadir"))
         strSetDataDir = mapArgs["/datadir"];
 
@@ -2961,32 +3002,49 @@ bool CMyApp::OnInit2()
         ExitProcess(0);
     }
 
+    //SATOSHI_START
     //
     // Load data files
     //
+    //SATOSHI_END
     string strErrors;
     int64 nStart, nEnd;
 
+
     printf("Loading addresses...\n");
     QueryPerformanceCounter((LARGE_INTEGER*)&nStart);
+
+    //What is
     if (!LoadAddresses())
         strErrors += "Error loading addr.dat      \n";
     QueryPerformanceCounter((LARGE_INTEGER*)&nEnd);
     printf(" addresses   %20I64d\n", nEnd - nStart);
 
+
+
     printf("Loading block index...\n");
     QueryPerformanceCounter((LARGE_INTEGER*)&nStart);
+
+    //What is
     if (!LoadBlockIndex())
         strErrors += "Error loading blkindex.dat      \n";
     QueryPerformanceCounter((LARGE_INTEGER*)&nEnd);
     printf(" block index %20I64d\n", nEnd - nStart);
 
+
+
     printf("Loading wallet...\n");
     QueryPerformanceCounter((LARGE_INTEGER*)&nStart);
+
+    //What is
     if (!LoadWallet())
         strErrors += "Error loading wallet.dat      \n";
     QueryPerformanceCounter((LARGE_INTEGER*)&nEnd);
     printf(" wallet      %20I64d\n", nEnd - nStart);
+
+
+
+
 
     printf("Done loading\n");
 
@@ -2998,6 +3056,8 @@ bool CMyApp::OnInit2()
         printf("mapWallet.size() = %d\n",       mapWallet.size());
         printf("mapAddressBook.size() = %d\n",  mapAddressBook.size());
 
+
+    //show any errors loading data
     if (!strErrors.empty())
     {
         wxMessageBox(strErrors);
@@ -3005,12 +3065,17 @@ bool CMyApp::OnInit2()
         return false;
     }
 
+    //SATOSHI_START
     // Add wallet transactions that aren't already in a block to mapTransactions
+    //SATOSHI_END
+    //accepts all not in txdb
     ReacceptWalletTransactions();
 
+    //SATOSHI_START
     //
     // Parameters
     //
+    //SATOSHI_END
     if (mapArgs.count("/printblockindex") || mapArgs.count("/printblocktree"))
     {
         PrintBlockTree();
@@ -3018,6 +3083,7 @@ bool CMyApp::OnInit2()
         return false;
     }
 
+    //If argument 'gen' passed in then global fGenerateBitcoins is true
     if (mapArgs.count("/gen"))
     {
         if (mapArgs["/gen"].empty())
@@ -3026,23 +3092,29 @@ bool CMyApp::OnInit2()
             fGenerateBitcoins = atoi(mapArgs["/gen"].c_str());
     }
 
+    //SATOSHI_START
     //
     // Create the main frame window
     //
+    //SATOSHI_END
     {
         pframeMain = new CMainFrame(NULL);
         pframeMain->Show();
 
+        //Start node always
         if (!StartNode(strErrors))
             wxMessageBox(strErrors);
 
+        //Optionally start miner on separate thread if 'gen' passed in
         if (fGenerateBitcoins)
             if (_beginthread(ThreadBitcoinMiner, 0, NULL) == -1)
                 printf("Error: _beginthread(ThreadBitcoinMiner) failed\n");
 
+        //SATOSHI_START
         //
         // Tests
         //
+        //SATOSHI_END
         if (argc >= 2 && stricmp(argv[1], "/send") == 0)
         {
             int64 nValue = 1;

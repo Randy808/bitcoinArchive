@@ -19,6 +19,7 @@ static const int64 COIN = 100000000;
 static const int64 CENT = 1000000;
 static const int COINBASE_MATURITY = 100;
 
+//'~' is bitwise inversion so this looks like 00001111111 as per: https://stackoverflow.com/questions/19960068/what-does-mean-in-c-code
 static const CBigNum bnProofOfWorkLimit(~uint256(0) >> 32);
 
 
@@ -1083,6 +1084,9 @@ public:
 
     enum { nMedianTimeSpan=11 };
 
+
+    //Gets median transaction in block?
+    //What is pmedian?
     int64 GetMedianTimePast() const
     {
         unsigned int pmedian[nMedianTimeSpan];
@@ -1094,6 +1098,8 @@ public:
             *(--pbegin) = pindex->nTime;
 
         sort(pbegin, pend);
+
+        //Get midway pointer of pMedian between pbegin and pend
         return pbegin[(pend - pbegin)/2];
     }
 

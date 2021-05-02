@@ -1686,7 +1686,8 @@ bool ProcessMessages(CNode* pfrom)
 
 
 
-
+//NOT DONE
+//Called  from ProcessMessages which is called from node.cpp and net.cpp
 bool ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     static map<unsigned int, vector<unsigned char> > mapReuseKey;

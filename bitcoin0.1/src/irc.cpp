@@ -141,34 +141,50 @@ bool RecvUntil(SOCKET hSocket, const char* psz1, const char* psz2=NULL, const ch
 
 bool fRestartIRCSeed = false;
 
+
+//Joins irc channel with socket and looks for other join messages to find other nodes.
 void ThreadIRCSeed(void* parg)
 {
     loop
     {
+        //Performs a dns lookup over udp on the parameter to get hostent struct: http://www.on-time.com/rtos-32-docs/rtip-32/reference-manual/socket-api/gethostbyname.htm
         struct hostent* phostent = gethostbyname("chat.freenode.net");
+
+
+        //tries to get the address and manually assigns port 6667 to address data structure
         CAddress addrConnect(*(u_long*)phostent->h_addr_list[0], htons(6667));
 
+        //Alias to int (probably to denote a socket id)
         SOCKET hSocket;
+
+        //Connect socket using Address and allowing population of hSocket as id
         if (!ConnectSocket(addrConnect, hSocket))
         {
             printf("IRC connect failed\n");
             return;
         }
 
+        //loops until one of the following strings are found coming from irc
         if (!RecvUntil(hSocket, "Found your hostname", "using your IP address instead", "Couldn't look up your hostname"))
         {
             closesocket(hSocket);
             return;
         }
 
+        //Gets address to use as nickname in IRC
         string strMyName = EncodeAddress(addrLocalHost);
 
+        //A random name is chosen if this node can't be routed to I guess
         if (!addrLocalHost.IsRoutable())
             strMyName = strprintf("x%u", GetRand(1000000000));
 
+        //uses nickname of ip
         Send(hSocket, strprintf("NICK %s\r", strMyName.c_str()).c_str());
+
+        //Send the irc server a command starting with 'User', idk what command does
         Send(hSocket, strprintf("USER %s 8 * : %s\r", strMyName.c_str(), strMyName.c_str()).c_str());
 
+        //looking for 004
         if (!RecvUntil(hSocket, " 004 "))
         {
             closesocket(hSocket);
@@ -176,9 +192,11 @@ void ThreadIRCSeed(void* parg)
         }
         Sleep(500);
 
+        //Join bitcoin chat
         Send(hSocket, "JOIN #bitcoin\r");
         Send(hSocket, "WHO #bitcoin\r");
 
+        //keep looking for new irc lines until RestartIRCSeed is closed for some reason
         while (!fRestartIRCSeed)
         {
             string strLine;
@@ -201,21 +219,27 @@ void ThreadIRCSeed(void* parg)
 
             if (vWords[1] == "352" && vWords.size() >= 8)
             {
+                //S
                 // index 7 is limited to 16 characters
                 // could get full length name at index 10, but would be different from join messages
+                //S_E
                 strcpy(pszName, vWords[7].c_str());
                 printf("GOT WHO: [%s]  ", pszName);
             }
 
+            //Gets pszName from join message on irc
             if (vWords[1] == "JOIN")
             {
+                //S
                 // :username!username@50000007.F000000B.90000002.IP JOIN :#channelname
+                //S_E
                 strcpy(pszName, vWords[0].c_str() + 1);
                 if (strchr(pszName, '!'))
                     *strchr(pszName, '!') = '\0';
                 printf("GOT JOIN: [%s]  ", pszName);
             }
 
+            //If the username starts with 'u', parse the username as an address and add it to address db
             if (pszName[0] == 'u')
             {
                 CAddress addr;

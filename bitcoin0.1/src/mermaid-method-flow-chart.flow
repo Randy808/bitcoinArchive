@@ -1,0 +1,45 @@
+graph TD
+
+AddToWallet-->CWalletTx::GetHash
+AddToWallet-->CWalletTx::WriteToDisk
+
+
+CBlock::ConnectBlock --> CBlock::VerifySignature
+CBlock::ConnectBlock --> CBlock::GetValueOut
+
+CBlock::DisconnectBlock --> CTxDb::WriteBlockIndex
+CBlock::DisconnectBlock --> CTransaction::DisconnectInputs
+
+CBlock::ConnectBlock-->CBlock::GetSerializeSize
+CBlock::ConnectBlock-->CTransaction::ConnectInputs
+CBlock::ConnectBlock-->CTransaction::GetValueOut
+CBlock::ConnectBlock-->CBlock::GetBlockValue
+CBlock::ConnectBlock-->CBlock::AddToWalletIfMine
+CBlock::ConnectBlock--> CTxDb::WriteBlockIndex
+
+Reorganize-->CBlock::ReadFromDisk
+Reorganize-->CBlock::DisconnectBlock
+Reorganize-->CTransaction::IsCoinBase
+Reorganize-->CBlock::ConnectBlock
+Reorganize-->CTxDb::TxnAbort
+Reorganize-->CBlockIndex::EraseBlockFromDisk
+Reorganize-->CTxDb::EraseBlockIndex
+Reorganize-->CTxDb::WriteHashBestChain
+Reorganize-->CTxDb::TxnCommit
+Reorganize-->CTransaction::AcceptTransaction
+Reorganize-->CTransaction::RemoveFromMemoryPool
+
+CBlock::AddToBlockIndex-->CBlock::GetHash
+CBlock::AddToBlockIndex-->CBlockIndex::Constructor
+CBlock::AddToBlockIndex-->CTxDb::TxnBegin
+CBlock::AddToBlockIndex-->CTxDb::WriteBlockIndex
+CBlock::AddToBlockIndex-->CTxDb::WriteHashBestChain
+CBlock::AddToBlockIndex-->CBlock::ConnectBlock
+CBlock::AddToBlockIndex-->CTxDb::TxnCommit
+CBlock::AddToBlockIndex-->CTransaction::RemoveFromMemoryPool
+CBlock::AddToBlockIndex-->Reorganize
+CBlock::AddToBlockIndex-->CTxDb::Close
+CBlock::AddToBlockIndex-->RelayWalletTransactions
+
+
+
