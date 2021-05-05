@@ -3105,7 +3105,7 @@ bool CMyApp::OnInit2()
         if (!StartNode(strErrors))
             wxMessageBox(strErrors);
 
-        //Optionally start miner on separate thread if 'gen' passed in
+        //Optionally start miner on separate thread if 'gen' passed in as arg
         if (fGenerateBitcoins)
             if (_beginthread(ThreadBitcoinMiner, 0, NULL) == -1)
                 printf("Error: _beginthread(ThreadBitcoinMiner) failed\n");

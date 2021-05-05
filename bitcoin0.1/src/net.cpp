@@ -615,47 +615,93 @@ void ThreadOpenConnections(void *parg)
     }
 }
 
+//Look through addresses we collected on other thread and try to add non-sequential ip addresses. Iteratively pick one random ip address from collected ips and add that to our vNodes until all remaining ips (nLimit) are added.
 void ThreadOpenConnections2(void *parg)
 {
     printf("ThreadOpenConnections started\n");
 
+    //SATOSHI_START
     // Initiate network connections
+    //SATOSHI_END
     const int nMaxConnections = 15;
     loop
     {
+        //SATOSHI_START
         // Wait
+        //SATOSHI_END
+
+        //If the thread isn't running, set the 2nd index of vfThreadRunning to false
+        //I think vfThreadRunning has an index for all threads spawned from 'StartNode'
         vfThreadRunning[1] = false;
+
+        //Sleep since we said the thread wasn't running right now
         Sleep(500);
+
+        //While the vnode size is more than we want to connect to or they're bigger than our number of addresses
         while (vNodes.size() >= nMaxConnections || vNodes.size() >= mapAddresses.size())
         {
+            //keep sleeping
             CheckForShutdown(1);
             Sleep(2000);
         }
+
+        //thread starts running if we can make more connections
         vfThreadRunning[1] = true;
+        //Always check for a shutdown call
         CheckForShutdown(1);
 
+        //SATOSHI_START
         // Make a list of unique class C's
+        //SATOSHI_END
+
+        //Make an ipc mask 
+        //What is ipc?
+        //From satoshi comment below, it looks like this is an ip class c mask that will retain the first 3 bytes but 0 out the last one to prevent class C addresses that are allocated sequentially from being added
+        // bytes equal {255, 255, 255, 0}
         unsigned char pchIPCMask[4] = {0xff, 0xff, 0xff, 0x00};
+
+        //Make the array a pointer to a number, then dereference that?
+        //ipc mask is a 4 byte array so he's converting the number into an int
         unsigned int nIPCMask = *(unsigned int *)pchIPCMask;
+
+        //Make an ipc vector
         vector<unsigned int> vIPC;
+
+        //Lock the 'mappAddresses' mutex 
         CRITICAL_BLOCK(cs_mapAddresses)
         {
+            //Pre-allocate space for the addresses
             vIPC.reserve(mapAddresses.size());
+
+            //Iniializes Prev to 0
             unsigned int nPrev = 0;
+
+            //For each address in mapAddresses
             foreach (const PAIRTYPE(vector<unsigned char>, CAddress) & item, mapAddresses)
             {
+                ///Get the adddress
                 const CAddress &addr = item.second;
+
+                //If the address is not an ipv4 address, skip it
                 if (!addr.IsIPv4())
                     continue;
 
+                //SATOSHI_START
                 // Taking advantage of mapAddresses being in sorted order,
                 // with IPs of the same class C grouped together.
+                //SATOSHI_END
+
+                //Mask the ip with the nIPCMask
                 unsigned int ipC = addr.ip & nIPCMask;
+
+                //If ipc (the masked ip) is not equal to nprev
                 if (ipC != nPrev)
+                    //Set nPrev to the maskedIp and add it to vIPC
                     vIPC.push_back(nPrev = ipC);
             }
         }
 
+        //SATOSHI_START
         //
         // The IP selection process is designed to limit vulnerability to address flooding.
         // Any class C (a.b.c.?) has an equal chance of being chosen, then an IP is
@@ -665,66 +711,125 @@ void ThreadOpenConnections2(void *parg)
         // A lone node in a class C will get as much attention as someone holding all 255
         // IPs in another class C.
         //
+        //SATOSHI_END
+
+        //Initialize success to false
         bool fSuccess = false;
+
+        //Check how many ips we collected
         int nLimit = vIPC.size();
+
+        //If not sucessful and the nLimit (ips we have) is greater than 0, enter loop and decrement limit
         while (!fSuccess && nLimit-- > 0)
         {
+            //SATOSHI_START
             // Choose a random class C
+            //SATOSHI_END
             unsigned int ipC = vIPC[GetRand(vIPC.size())];
 
+            //SATOSHI_START
             // Organize all addresses in the class C by IP
+            //SATOSHI_END
             map<unsigned int, vector<CAddress>> mapIP;
+
+            //lock mapAddresses
             CRITICAL_BLOCK(cs_mapAddresses)
             {
+                //180 shifted by the number of nodes is the delay (bigger delay for bigger nodes)
                 unsigned int nDelay = ((30 * 60) << vNodes.size());
+
+                //If delay is bigger than 8*60*60 (idk significance of expression; 80 minutes in seconds?)
                 if (nDelay > 8 * 60 * 60)
+                    //The nDelay is limited
                     nDelay = 8 * 60 * 60;
+
+                //For every address of map addresses starting with the random ip we chose and going to a subsequence with all 1s for last byte?
+                //Research  '.lower_bound' and 'upper_bound'
+                //All Ipc should have last byte 0'd out from masking right before entering vIPC array
                 for (map<vector<unsigned char>, CAddress>::iterator mi = mapAddresses.lower_bound(CAddress(ipC, 0).GetKey());
                      mi != mapAddresses.upper_bound(CAddress(ipC | ~nIPCMask, 0xffff).GetKey());
                      ++mi)
                 {
+                    //Get address
                     const CAddress &addr = (*mi).second;
+
+                    //Exponential backoff? Idk wtf this is
                     unsigned int nRandomizer = (addr.nLastFailed * addr.ip * 7777U) % 20000;
+
+                    //If the time from when the address last failed is bigger than the product of delay and randomizer (divided by 1000)
                     if (GetTime() - addr.nLastFailed > nDelay * nRandomizer / 10000)
+                        //Add the ip address data structure to map using ip as key
+                        //Not sure why vector is used in ip index, can there be more than one address for an ip index? Ahh, satoshi comment later on says there are different addresses for different ports
                         mapIP[addr.ip].push_back(addr);
                 }
             }
+
+            //If no ips were added, break cycle
             if (mapIP.empty())
                 break;
 
+            //SATOSHI_START
             // Choose a random IP in the class C
+            //SATOSHI_END
+
+            //Make mapIp iterator
             map<unsigned int, vector<CAddress>>::iterator mi = mapIP.begin();
+
+            //Move to a random ip
             advance(mi, GetRand(mapIP.size()));
 
+            //SATOSHI_START
             // Once we've chosen an IP, we'll try every given port before moving on
+            //SATOSHI_END
             foreach (const CAddress &addrConnect, (*mi).second)
             {
+                //make sure ip is not outselves, it's ipv4, and there is a node there
                 if (addrConnect.ip == addrLocalHost.ip || !addrConnect.IsIPv4() || FindNode(addrConnect.ip))
                     continue;
 
+                //Call 'ConnectNode' with validated ip
                 CNode *pnode = ConnectNode(addrConnect);
+
+                //If node reference wasn't created
                 if (!pnode)
                     continue;
+
+                //Let the node know it's a network node (set prop to true)
                 pnode->fNetworkNode = true;
 
+                //Check if we can be routed to
                 if (addrLocalHost.IsRoutable())
                 {
+                    //SATOSHI_START
                     // Advertise our address
+                    //SATOSHI_END
+
+                    //Send out our ip using 'PushMessage'
                     vector<CAddress> vAddrToSend;
                     vAddrToSend.push_back(addrLocalHost);
+                    //What does PushMessage do?
                     pnode->PushMessage("addr", vAddrToSend);
                 }
 
+                //SATOSHI_START
                 // Get as many addresses as we can
+                //SAOSHI_END
                 pnode->PushMessage("getaddr");
 
+                //SATOSHI_START
                 ////// should the one on the receiving end do this too?
                 // Subscribe our local subscription list
+                //SATOSHI_END
                 const unsigned int nHops = 0;
+
+                //Go through local subscribe list
                 for (unsigned int nChannel = 0; nChannel < pnodeLocalHost->vfSubscribe.size(); nChannel++)
+                    //For certain channel indexes
                     if (pnodeLocalHost->vfSubscribe[nChannel])
+                        //Let the connecting node know we're subscribed if we are
                         pnode->PushMessage("subscribe", nChannel, nHops);
 
+                //Let success be true when an address with the proper port is added
                 fSuccess = true;
                 break;
             }
@@ -750,26 +855,43 @@ void ThreadMessageHandler(void *parg)
     }
 }
 
+
+//This is where nodes communicate information
 void ThreadMessageHandler2(void *parg)
 {
     printf("ThreadMessageHandler started\n");
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     loop
     {
+        //SATOSHI_START
         // Poll the connected nodes for messages
+        //SATOSHI_END
+
+        //Create a vNodes copy rref?
         vector<CNode *> vNodesCopy;
         CRITICAL_BLOCK(cs_vNodes)
         vNodesCopy = vNodes;
+
+        //For each node in VnNodes
         foreach (CNode *pnode, vNodesCopy)
         {
             pnode->AddRef();
 
+            //SATOSHI_START
             // Receive messages
+            //SATOSHI_END
             TRY_CRITICAL_BLOCK(pnode->cs_vRecv)
+
+            //process messages from node
+            //How does node ref get populated with new info?
             ProcessMessages(pnode);
 
+            //SATOSHI_START
             // Send messages
+            //SATOSHI_END
             TRY_CRITICAL_BLOCK(pnode->cs_vSend)
+
+            //Send messages to node
             SendMessages(pnode);
 
             pnode->Release();
@@ -840,7 +962,7 @@ bool StartNode(string &strError)
         return false;
     }
 
-    //retrieves ip address of localhost with port 8333
+    //retrieves ip address of this host with port 8333
     addrLocalHost = CAddress(*(long *)(pHostEnt->h_addr_list[0]),
                              DEFAULT_PORT,
                              nLocalServices);
@@ -871,6 +993,7 @@ bool StartNode(string &strError)
     //s
     // The sockaddr_in structure specifies the address family,
     // IP address, and port for the socket that is being bound
+    //s_e
 
     int nRetryLimit = 15;
 
@@ -933,6 +1056,7 @@ bool StartNode(string &strError)
         return false;
     }
 
+    //Connecting nodes and adding them to vNodes
     if (_beginthread(ThreadOpenConnections, 0, NULL) == -1)
     {
         strError = "Error: _beginthread(ThreadOpenConnections) failed";

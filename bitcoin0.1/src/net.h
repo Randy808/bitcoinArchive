@@ -536,10 +536,13 @@ public:
             setInventoryKnown.insert(inv);
     }
 
+    //Queues up inventory to be sent to node
     void PushInventory(const CInv& inv)
     {
         CRITICAL_BLOCK(cs_inventory)
+            //If it's already in 'setInventoryKnown', don't queue up
             if (!setInventoryKnown.count(inv))
+                //Otherwise add it to send queue
                 vInventoryToSend.push_back(inv);
     }
 
@@ -763,14 +766,20 @@ public:
 
 
 
+//This queus inventory to be sent for all nodes
 inline void RelayInventory(const CInv& inv)
 {
+    //S
     // Put on lists to offer to the other nodes
+    //S_E
     CRITICAL_BLOCK(cs_vNodes)
         foreach(CNode* pnode, vNodes)
+            //PushNodes queues inventory to be sent to node
             pnode->PushInventory(inv);
 }
 
+
+//Calls RelayMessage with same inv but with the templated data encapsulated in a data stream
 template<typename T>
 void RelayMessage(const CInv& inv, const T& a)
 {
@@ -785,18 +794,31 @@ inline void RelayMessage<>(const CInv& inv, const CDataStream& ss)
 {
     CRITICAL_BLOCK(cs_mapRelay)
     {
+        //S
         // Expire old relay messages
+        //S_E
+
+        //For all relays set to expire
         while (!vRelayExpiration.empty() && vRelayExpiration.front().first < GetTime())
         {
+            //erase them from mapRelay
             mapRelay.erase(vRelayExpiration.front().second);
+            //and remove them
             vRelayExpiration.pop_front();
         }
 
+        //S
         // Save original serialized message so newer versions are preserved
+        //S_E
+
+        //Save the current relayed message with stream into 'mapRelay'
         mapRelay[inv] = ss;
+
+        //Add to vRelayExpiration with expiration (someValue+15)*60 (idk what units of time GetTime returns in)
         vRelayExpiration.push_back(make_pair(GetTime() + 15 * 60, inv));
     }
 
+    //Makes another call to relay inventory with just the inventory
     RelayInventory(inv);
 }
 
