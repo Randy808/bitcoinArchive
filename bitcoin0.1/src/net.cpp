@@ -12,6 +12,7 @@ void ThreadOpenConnections2(void *parg);
 //
 // Global state variables
 //
+//fClient wasn't really used in this version of bitcoin. fClient was supposed to be a flag you could pass into the bitcoin binary which indicated you wanted the node to run in lite mode with minimal verification (SPV mode takes place of that today I believe)
 bool fClient = false;
 uint64 nLocalServices = (fClient ? 0 : NODE_NETWORK);
 CAddress addrLocalHost(0, DEFAULT_PORT, nLocalServices);
@@ -352,68 +353,133 @@ void ThreadSocketHandler(void *parg)
 
 void ThreadSocketHandler2(void *parg)
 {
+    //log thread start
     printf("ThreadSocketHandler started\n");
+
+    //Initialize hListenSocket with param
+    //param parg should be equal to 'new SOCKET(hListenSocket)'
     SOCKET hListenSocket = *(SOCKET *)parg;
     list<CNode *> vNodesDisconnected;
     int nPrevNodeCount = 0;
 
     loop
     {
+        //SATOSHI_START
         //
         // Disconnect nodes
         //
+        //SATOSHI_END
         CRITICAL_BLOCK(cs_vNodes)
         {
+            //SATOSHI_START
             // Disconnect duplicate connections
+
+            //Make a map of int to node
             map<unsigned int, CNode *> mapFirst;
+
+            //for each node in vNodes (list of known nodes)
             foreach (CNode *pnode, vNodes)
             {
+                //If the fDisconnect property is true on pNode
                 if (pnode->fDisconnect)
+                    //skip node processing
                     continue;
+
+                //Ip is equal to the node's ip address
                 unsigned int ip = pnode->addr.ip;
+
+                //If the ip is present in mapFirst and the ip is greater than the ip of our node running this. This will identify duplicate entries needing removal. 
+                //We have to disconnect on the duplicate case if our ip is lower which is what second part of condition is saying.
                 if (mapFirst.count(ip) && addrLocalHost.ip < ip)
                 {
+                    //SATOSHI_START
                     // In case two nodes connect to each other at once,
                     // the lower ip disconnects its outbound connection
+                    //SATOSHI_END
+
+                    //Get the node from the ip address
                     CNode *pnodeExtra = mapFirst[ip];
 
+                    //If the
+                    //Idk what the ref count is but I know its an int that gets incrememnted when time is added, and decrememnted when 'Release' is called on the node
                     if (pnodeExtra->GetRefCount() > (pnodeExtra->fNetworkNode ? 1 : 0))
+                        //Swap pnodeExtra (retrieved through map) with  pNode which has the 'ip' used to find pNodeExtra
                         swap(pnodeExtra, pnode);
 
+                    //If the pNodeExtra refCount is less than the pNodeExtra's binary mapped NetworkNode value
                     if (pnodeExtra->GetRefCount() <= (pnodeExtra->fNetworkNode ? 1 : 0))
                     {
+
+                        //LOG that nodes are being disconnected
                         printf("(%d nodes) disconnecting duplicate: %s\n", vNodes.size(), pnodeExtra->addr.ToString().c_str());
+
+                        //If the networkNode is defined on pNodeExtra and not pNode
                         if (pnodeExtra->fNetworkNode && !pnode->fNetworkNode)
                         {
+                            //add ref to pNode
                             pnode->AddRef();
+                            //Swap fNetworkNode values
                             swap(pnodeExtra->fNetworkNode, pnode->fNetworkNode);
+
+                            //Release pNodeExtra (reducing its Ref count)
                             pnodeExtra->Release();
                         }
+
+                        //Set the disconnect to pnodeExtra to true
                         pnodeExtra->fDisconnect = true;
                     }
                 }
+
+                //Add pNode to mapFirst with its ip (retrieved from pnode in the beginning)
                 mapFirst[ip] = pnode;
             }
 
+            //SATOSHI_START
             // Disconnect unused nodes
+            //SATOSHI_END
+
+            //Copy by value of vNodes array
             vector<CNode *> vNodesCopy = vNodes;
+
+            //For each node in the node copies
             foreach (CNode *pnode, vNodesCopy)
             {
+                //if a node is ready to disconnect and there's nothing for that node to receive or send
                 if (pnode->ReadyToDisconnect() && pnode->vRecv.empty() && pnode->vSend.empty())
                 {
+                    //SATOSHI_START
                     // remove from vNodes
-                    vNodes.erase(remove(vNodes.begin(), vNodes.end(), pnode), vNodes.end());
+                    //SATOSHI_END
+
+                    //Erase memory after removal of pnode in parameter
+                    vNodes.erase(
+                        //remove pnode from vNodes and return new iterator to end
+                        remove(vNodes.begin(), vNodes.end(), pnode),
+                        //Send in 'real' end to vNodes
+                        vNodes.end());
+
+                    //disconnect pnode
                     pnode->Disconnect();
 
+                    //SATOSHI_START
                     // hold in disconnected pool until all refs are released
+                    //SATOSHI_END
+
+                    //the release time is set to the max between the node release time and the 5 hours?
                     pnode->nReleaseTime = max(pnode->nReleaseTime, GetTime() + 5 * 60);
+
+                    //If fNetworkNode is true, the node can be released
                     if (pnode->fNetworkNode)
                         pnode->Release();
+
+                    //push reference to node into vNodesDisconnected
                     vNodesDisconnected.push_back(pnode);
                 }
             }
 
+            //SATOSHI_START
             // Delete disconnected nodes
+            //SATOSHI_END
             list<CNode *> vNodesDisconnectedCopy = vNodesDisconnected;
             foreach (CNode *pnode, vNodesDisconnectedCopy)
             {
@@ -440,49 +506,95 @@ void ThreadSocketHandler2(void *parg)
             MainFrameRepaint();
         }
 
+        //SATOSHI_START
         //
         // Find which sockets have data to receive
         //
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 50000; // frequency to poll pnode->vSend
+        //SATOSHI_END
 
+        //define a timeval structure representing a timeout
+        struct timeval timeout;
+
+        //Set tv_sec which from the satoshi comment below is the frequrncy of polling maybe?
+        timeout.tv_sec = 0;
+
+        //SATOSHI_START
+        // frequency to poll pnode->vSend
+        //SATOSHI_END
+        timeout.tv_usec = 50000; 
+
+        //An 'fd_set' is a bit array (according to GNU) that represents a set of file descriptors (unique ids for data sources and IO devices) for use with a 'select' function
+        //Set comes from winsock so it's probably the specifically targeting windows sockets: https://docs.microsoft.com/en-us/windows/win32/api/winsock/ns-winsock-fd_set
         struct fd_set fdsetRecv;
         struct fd_set fdsetSend;
+
+        //Initializes the receive and send file descriptor set to the empty set
         FD_ZERO(&fdsetRecv);
         FD_ZERO(&fdsetSend);
+
+        //Make an int (SOCKET IS MACRO FOR INT) and set it equal to 0
         SOCKET hSocketMax = 0;
+
+        //Adds the hListenSocket id to the fdSetRecv
         FD_SET(hListenSocket, &fdsetRecv);
+
+        //The socket max is hListenSocket if defined, 0 otherwise
         hSocketMax = max(hSocketMax, hListenSocket);
+
+        //Lock vNodes
         CRITICAL_BLOCK(cs_vNodes)
         {
+            //for ever node in vNodes
             foreach (CNode *pnode, vNodes)
             {
+                //Add the socket id on pNode to the receiving file descriptor set
                 FD_SET(pnode->hSocket, &fdsetRecv);
+
+                //Set hSocketMax if the socket id just processed is higher than what was seen
                 hSocketMax = max(hSocketMax, pnode->hSocket);
+
+                //lock vSend
                 TRY_CRITICAL_BLOCK(pnode->cs_vSend)
+                //If vSend on the node isn't empty
                 if (!pnode->vSend.empty())
+                    //Add the id of the socket for tha node to the sending file descriptor set
                     FD_SET(pnode->hSocket, &fdsetSend);
             }
         }
 
+        //disable thread flag
         vfThreadRunning[0] = false;
+
+        //Call select on the socket with the max file descriptor (+!?) along with the receive buffer and send buffer with timeout.
+        //Select looks through fdsetRecv to see which sockets in the set are ready to be read, as well as the fdSetSend to see which ones are ready to send. Select then returns the number of sockets that were ready to use or an int representing a socket error
         int nSelect = select(hSocketMax + 1, &fdsetRecv, &fdsetSend, NULL, &timeout);
+
+        //Turn thread flag on
         vfThreadRunning[0] = true;
         CheckForShutdown(0);
+
+        //If the select operation ended in failure
         if (nSelect == SOCKET_ERROR)
         {
+            //Get windows socket error
             int nErr = WSAGetLastError();
             printf("select failed: %d\n", nErr);
+
+            //for every socket
             for (int i = 0; i <= hSocketMax; i++)
             {
+                //Add the socket id to both sets
                 FD_SET(i, &fdsetRecv);
                 FD_SET(i, &fdsetSend);
             }
+
+            //sleep using timeout
             Sleep(timeout.tv_usec / 1000);
         }
+
         RandAddSeed();
 
+        //SATOSHI_START
         //// debug print
         //foreach(CNode* pnode, vNodes)
         //{
@@ -490,55 +602,106 @@ void ThreadSocketHandler2(void *parg)
         //    printf("vSend = %-5d    ", pnode->vSend.size());
         //}
         //printf("\n");
+        //SAOSHI_END
 
+        //SATOSHI_START
         //
         // Accept new connections
         //
+        //SATOSHI_END
+
+        //if the listen socket id is in the fdsetRecv buffer (it should be if it's defined)
         if (FD_ISSET(hListenSocket, &fdsetRecv))
         {
+            //A socket address structure for ipv4 addresses is made
             struct sockaddr_in sockaddr;
+
+            //Get size of address structure and put it in len
             int len = sizeof(sockaddr);
+
+            //Make socket handler from calling 'accept' which means the socket is trying to accept connections made to it
+
+            //The first param is the socket being used to retrieve data, the second parameter is the address of the caller, and the third is the lnegth of the address structure used to store caller info. 
+            
+            //It returns the descriptor of the socket that ends up handling the connection, which may not be the socket that received the data which is 'hListenSocket' here
             SOCKET hSocket = accept(hListenSocket, (struct sockaddr *)&sockaddr, &len);
+
+            //wrap the sockaddr in the custom Bitcoin address structure
             CAddress addr(sockaddr);
+
+            //If hSocket is reported as invalid
             if (hSocket == INVALID_SOCKET)
             {
+                //Process error
                 if (WSAGetLastError() != WSAEWOULDBLOCK)
                     printf("ERROR ThreadSocketHandler accept failed: %d\n", WSAGetLastError());
             }
             else
             {
+                //Log accepted connection
                 printf("accepted connection from %s\n", addr.ToString().c_str());
+
+                //Create a new node representing this connection to us
                 CNode *pnode = new CNode(hSocket, addr, true);
+
+                //Add ref to the pnode 
                 pnode->AddRef();
+
+                //Add the pnode to vNodes after locking vNodes
                 CRITICAL_BLOCK(cs_vNodes)
                 vNodes.push_back(pnode);
             }
         }
 
+
+        //SATOSHI_START
         //
         // Service each socket
         //
+        //SATOSHI_END
+
+        //vNodes is a copy of vNodes
         vector<CNode *> vNodesCopy;
         CRITICAL_BLOCK(cs_vNodes)
         vNodesCopy = vNodes;
+
+        //For each node in the vNodesCopy
         foreach (CNode *pnode, vNodesCopy)
         {
             CheckForShutdown(0);
+
+            //Grab the socket representing the connection from pnode
             SOCKET hSocket = pnode->hSocket;
 
+            //SATOSHI_START
             //
             // Receive
             //
+            //SATOSHI_END
+
+            //If hSocket is in fdSetRecv which it should be because all pnode sockets were added in the section under the SATOSHI_COMMENT 'Find which sockets have data to receive'
             if (FD_ISSET(hSocket, &fdsetRecv))
             {
+                //lock the receive buffer on the actual node
                 TRY_CRITICAL_BLOCK(pnode->cs_vRecv)
                 {
+
+                    //Copy the Data stream from the node by reference
                     CDataStream &vRecv = pnode->vRecv;
+
+                    //Get the size of the receive buffer and make that local 
                     unsigned int nPos = vRecv.size();
 
+                    //SATOSHI_START
                     // typical socket buffer is 8K-64K
+                    //SATOSHI_END
                     const unsigned int nBufSize = 0x10000;
+                    
+                    //Adding 65536 bytes to existing buffer
                     vRecv.resize(nPos + nBufSize);
+
+
+                    //receive information from hSocket into vRecv[nPos] because if the stream was already sized nPos bytes then it probably had something in it that we don't want to override, hence the offset. nBufSize is the buffer we want to read into.
                     int nBytes = recv(hSocket, &vRecv[nPos], nBufSize, 0);
                     vRecv.resize(nPos + max(nBytes, 0));
                     if (nBytes == 0)
@@ -872,9 +1035,10 @@ void ThreadMessageHandler2(void *parg)
         CRITICAL_BLOCK(cs_vNodes)
         vNodesCopy = vNodes;
 
-        //For each node in VnNodes
+        //For each node in vNodes
         foreach (CNode *pnode, vNodesCopy)
         {
+            //Being that 'AddRef' is used here at the beginning and 'Release' is used at the end there, I imagine a ref reflects the number of places in the program where the node reference is actively being used (so every ref is like a flag for a point in the program)
             pnode->AddRef();
 
             //SATOSHI_START
@@ -891,7 +1055,7 @@ void ThreadMessageHandler2(void *parg)
             //SATOSHI_END
             TRY_CRITICAL_BLOCK(pnode->cs_vSend)
 
-            //Send messages to node
+            //Send messages to other nodes, requesting data from our node
             SendMessages(pnode);
 
             pnode->Release();
@@ -968,8 +1132,9 @@ bool StartNode(string &strError)
                              nLocalServices);
     printf("addrLocalHost = %s\n", addrLocalHost.ToString().c_str());
 
-    //s
+    //SATOSHI_START
     // Create socket for listening for incoming connections
+    //SATOSHI_END
     SOCKET hListenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (hListenSocket == INVALID_SOCKET)
     {
@@ -1049,6 +1214,9 @@ bool StartNode(string &strError)
     // Start threads
     //
     //S_E
+
+
+    //Real network handling stuff
     if (_beginthread(ThreadSocketHandler, 0, new SOCKET(hListenSocket)) == -1)
     {
         strError = "Error: _beginthread(ThreadSocketHandler) failed";
@@ -1064,6 +1232,7 @@ bool StartNode(string &strError)
         return false;
     }
 
+    //See what messages came in for other nodes, and requests information this node doesn't have
     if (_beginthread(ThreadMessageHandler, 0, NULL) == -1)
     {
         strError = "Error: _beginthread(ThreadMessageHandler) failed";

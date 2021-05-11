@@ -464,6 +464,8 @@ public:
     set<CInv> setInventoryKnown2;
     vector<CInv> vInventoryToSend;
     CCriticalSection cs_inventory;
+
+    //Randy: timestamp to inventory?
     multimap<int64, CInv> mapAskFor;
 
     // publish and subscription
@@ -515,6 +517,7 @@ public:
         return max(nRefCount, 0) + (GetTime() < nReleaseTime ? 1 : 0);
     }
 
+    //Either changes the release time if parameter given, or adds to refCount
     void AddRef(int64 nTimeout=0)
     {
         if (nTimeout != 0)

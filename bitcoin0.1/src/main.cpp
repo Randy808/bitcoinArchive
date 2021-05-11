@@ -191,7 +191,7 @@ void AddOrphanTx(const CDataStream &vMsg)
     //Declares transaction
     CTransaction tx;
 
-    //Adding data stream to transaction?
+    //Reading data stream into transaction
     CDataStream(vMsg) >> tx;
 
     //Get hash of transaction
@@ -257,16 +257,15 @@ void EraseOrphanTx(uint256 hash)
 //Retrieves source transaction of this transaction from mapWallet. Calls 'IsMine' on the vout of the retrieved input transaction.
 bool CTxIn::IsMine() const
 {
-    //Add a lock to cs_mapWallet (what is cs_mapWallet?)
+    //Add a lock to cs_mapWallet
+    //cs_mapWallet works like a mutex
     CRITICAL_BLOCK(cs_mapWallet)
     {
-        //How is mapWallet and cs_mapWallet relate?
-        //This line makes an iterator to point to the transaction that powers this one
+        //This line tries to make an iterator point to the transaction that powers this one
         //prevout has metadata to the source transaction from TxIn
         map<uint256, CWalletTx>::iterator mi = mapWallet.find(prevout.hash);
 
-        //Why can't the pointer to the output of the source transaction point to the end?
-        //End seems like the pointer at the end of the structure meaning the transaction wasn't found
+        //If the source transaction wasn't found, the iterator reaches the end of mapWallet
         if (mi != mapWallet.end())
         {
             //After transaction is retrieved, verify the payout by calling 'IsMine' on vout
@@ -284,7 +283,7 @@ bool CTxIn::IsMine() const
     return false;
 }
 
-//gets the source transaction using the prevout hash (since this is output metadata) and looks at the output to see if 'isMine' is true (locating the correct output of the source transaction using prevout.n). if it is true, return the 'nValue' from output slot
+//gets the source transaction using the prevout hash (since this is output metadata). looks at the output of source transaction to see if 'isMine' is true and locates the correct output of the source transaction using 'prevout.n'. if it is true, return the 'nValue' from output slot
 int64 CTxIn::GetDebit() const
 {
     CRITICAL_BLOCK(cs_mapWallet)
@@ -310,9 +309,8 @@ int64 CTxIn::GetDebit() const
 
 int64 CWalletTx::GetTxTime() const
 {
-    //What is fTimeReceivedIsTxTime?
-    //Turned true on 'submitOrder' action of 'ProcessMessage' method, and turned true in 'createTransaction'
-    //What is hashBlock
+    //fTimeReceivedIsTxTime is turned true on 'submitOrder' action of 'ProcessMessage' method, and turned true in 'createTransaction'. It represents whether a valid value is in 'nTimeReceived'
+    //HashBlock should be the block that the transaction ended up in. It's defined on the MerkleTx that CWalletTx derives from
     if (!fTimeReceivedIsTxTime && hashBlock != 0)
     {
 
@@ -336,7 +334,8 @@ int64 CWalletTx::GetTxTime() const
 //If fClient but has a hashblock assigned, just return height of block
 int CMerkleTx::SetMerkleBranch(const CBlock *pblock)
 {
-    //Seems to be set according to 'nServices' and 'NIDE_NETWORK' constant?: https://github.com/benjyz/bitcoinArchive/blob/7c398e20ff7d69d91465cee58c5f8c52117df6b6/study/main.cpp#L1720
+    //fClient is set to true
+    //How is global fClient changed?
     if (fClient)
     {
         if (hashBlock == 0)
@@ -358,11 +357,11 @@ int CMerkleTx::SetMerkleBranch(const CBlock *pblock)
             if (!CTxDB("r").ReadTxIndex(GetHash(), txindex))
                 return 0;
 
-            //Reads the actual transaction using the index information found with the hash into blockTmp
+            //Reads the block using this transaction's index information (found using transaction hash) into blockTmp
             if (!blockTmp.ReadFromDisk(txindex.pos.nFile, txindex.pos.nBlockPos, true))
                 return 0;
 
-            //pblock (maybe previous block?) is set to the reference of the block corresponding to this transaction
+            //pblock (ref to current block) is set to the reference of the block corresponding to this transaction
             pblock = &blockTmp;
         }
 
@@ -397,8 +396,7 @@ int CMerkleTx::SetMerkleBranch(const CBlock *pblock)
         // Fill in merkle branch
         //SATOSHI_END
 
-        //The MerkleBranch for this transaction is equal to the MerkleBranch for the pblock which I thought equaled this transaction?
-        //This transaction located the block that will now be used to 'getMerkleBranch' as opposed o this method that 'SetMerkleBranch'
+        //The MerkleBranch for this transaction is equal to the MerkleBranch for the block it's held within
         vMerkleBranch = pblock->GetMerkleBranch(nIndex);
     }
 
@@ -408,14 +406,19 @@ int CMerkleTx::SetMerkleBranch(const CBlock *pblock)
     //Gets the iterator pointing at the block that contains this transaction by looking at the block hash taken from above
     map<uint256, CBlockIndex *>::iterator mi = mapBlockIndex.find(hashBlock);
 
-    //If this block is at the end , return
+    //If the block index for the block containing this transaction isn't found
     if (mi == mapBlockIndex.end())
+        //return
         return 0;
 
+    //Get the block index
     CBlockIndex *pindex = (*mi).second;
+
+    //Validation making sure index exists and it's in the main chain
     if (!pindex || !pindex->IsInMainChain())
         return 0;
 
+    //return the difference in height between this block index and the index corresponding to longest chain
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
@@ -759,7 +762,7 @@ int CMerkleTx::GetBlocksToMaturity() const
     return max(0, (COINBASE_MATURITY + 20) - GetDepthInMainChain());
 }
 
-//Accepts the transaction for a client if the transaction is not in a main chain and is able to successfully clientConnectInputs, and accepts the transaction unconditionally otherwise. Check inputs is set to tru when accepting the transaction if not client.
+//Accepts the transaction for a fClient if the transaction is not in a main chain and is able to successfully clientConnectInputs, and accepts the transaction unconditionally if not an fClient. Check inputs is set to tru when accepting the transaction if not client.
 bool CMerkleTx::AcceptTransaction(CTxDB &txdb, bool fCheckInputs)
 {
 
@@ -1634,7 +1637,7 @@ bool Reorganize(CTxDB &txdb, CBlockIndex *pindexNew)
     return true;
 }
 
-//Add block index to 'mapBlockIndex' and to transaction db. If it's the new longest block then write it as the best chain making it genesis block if no genesis and connecting it to previous blocks as necessary. Then commit to db, close db, and relay wallet transactions
+//Add block index to 'mapBlockIndex' and to transaction db (which has block index handling methods). If it's the new longest block then write it as the best chain, making it genesis block if no genesis, and connecting it to previous blocks as necessary. Then commit to db, close db, and relay wallet transactions
 bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
 {
     //S
@@ -2501,8 +2504,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         //Declare address
         CAddress addrMe;
 
-        //Idk wtf this is doing. Piping something into addrMe?
-        //Maybe rRecv populates each one?
+        //vRecv populates each one with version message
         vRecv >> pfrom->nVersion >> pfrom->nServices >> nTime >> addrMe;
 
         //If the version is 0, return false?
@@ -2513,7 +2515,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         pfrom->vSend.SetVersion(min(pfrom->nVersion, VERSION));
         pfrom->vRecv.SetVersion(min(pfrom->nVersion, VERSION));
 
-        //Whether pfrom is a client depends on if 'nServices' mapped with the NODE_NETWORK (which is an enum with int value '1')
+        //Whether pfrom is a client depends on if 'nServices' masked with the NODE_NETWORK (which is an enum with int value '1'). nServices defaults to 0 so this should pretty much always be true
         pfrom->fClient = !(pfrom->nServices & NODE_NETWORK);
 
         //if client is true
@@ -2647,7 +2649,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         }
     }
 
-    //If the command is 'getdata', read in inventory vector and for each inventory, if it's a blocksend block to source node and if it's another known type send the source node data from mapRelay ( a map that takes inventory as key)
+    //If the command is 'getdata', read in inventory vector and for each inventory, if it's a block, send block to source node and if it's another known type send the source node data from mapRelay ( a map that takes inventory as key)
     else if (strCommand == "getdata")
     {
         //Read in a vector inventory
@@ -2919,61 +2921,124 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
     return true;
 }
 
+//See what other nodes have for addresses, inventory, and data, and if what's in their data queue doesn't exist in our seen data for them, our node will ask for the data. This method is run on node startup and runs within an endless loop.
 bool SendMessages(CNode *pto)
 {
+    //Check for shutdown
     CheckForShutdown(2);
     CRITICAL_BLOCK(cs_main)
     {
+        //SATOSHI_START
         // Don't send anything until we get their version message
+        //SATOSHI_END
+
+        //If version of recipient node is 0, bail out
         if (pto->nVersion == 0)
             return true;
 
+        //SATOSHI_START
         //
         // Message: addr
         //
+        //SATOSHI_END
+
+        //Declare vector of addresses
         vector<CAddress> vAddrToSend;
+
+        //Reverse the vector of addresses
         vAddrToSend.reserve(pto->vAddrToSend.size());
+
+        //for each address in recipient node addresses
         foreach (const CAddress &addr, pto->vAddrToSend)
+            //If the address is NOT in the recipient node's setAddrKnown
             if (!pto->setAddrKnown.count(addr))
+                //Add the address to our own node's vAddrToSend
                 vAddrToSend.push_back(addr);
+
+        //Clear recipient node's vAddrToSend
         pto->vAddrToSend.clear();
+
+        //If our addrToSend is not empty
         if (!vAddrToSend.empty())
+            //Send a "addr" message using the vAddrToSend
             pto->PushMessage("addr", vAddrToSend);
 
+        //SATOSHI_START
         //
         // Message: inventory
         //
+        //SATOSHI_END
+
+        //Declare inventory vector
         vector<CInv> vInventoryToSend;
+
+        //lock recipient node inventory
         CRITICAL_BLOCK(pto->cs_inventory)
         {
+            //Reserve inventory size of our own according to recipient node
             vInventoryToSend.reserve(pto->vInventoryToSend.size());
+
+            //For each inventory on recipient
             foreach (const CInv &inv, pto->vInventoryToSend)
             {
+                //SATOSHI_START
                 // returns true if wasn't already contained in the set
+                //SATOSHI_END
+
+                //insert the inventory in the 'setInventoryKnown' for recipient 
                 if (pto->setInventoryKnown.insert(inv).second)
+                    //and push into our inventoryTOSend if newly inserted into set
                     vInventoryToSend.push_back(inv);
             }
+
+            //Clear recipeint inventory
             pto->vInventoryToSend.clear();
+
+            //clear recipient inventory set 2
             pto->setInventoryKnown2.clear();
         }
+
+        //If the inventory to send for us is not empty
         if (!vInventoryToSend.empty())
+            //Push inventory
             pto->PushMessage("inv", vInventoryToSend);
 
+        //SATOSHI_START
         //
         // Message: getdata
         //
+        //SATOSHI_END
+
+        //Vector of inventoryy to ask for
         vector<CInv> vAskFor;
+
+        //Get current time
         int64 nNow = GetTime() * 1000000;
+
+        //initialize transaction db
         CTxDB txdb("r");
+
+        //While thr recipient reference still has things in its mapAskFor, and the things in the map are timestamped in the past
         while (!pto->mapAskFor.empty() && (*pto->mapAskFor.begin()).first <= nNow)
         {
+            //Get the inventory element
             const CInv &inv = (*pto->mapAskFor.begin()).second;
+
+            //Log
             printf("sending getdata: %s\n", inv.ToString().c_str());
+
+            //If the inventory does not exist in transaction db
             if (!AlreadyHave(txdb, inv))
+                //Add inventory to askFor vector
                 vAskFor.push_back(inv);
+
+            //erase the element from recipient mapAskFor
             pto->mapAskFor.erase(pto->mapAskFor.begin());
         }
+
+        //If what we have to ask for is not empty
         if (!vAskFor.empty())
+            //send message asking for data
             pto->PushMessage("getdata", vAskFor);
     }
     return true;
@@ -3640,7 +3705,7 @@ bool SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew)
             return error("SendMoney() : %s\n", strError.c_str());
         }
 
-        //Try and commit the transaction as spent
+        //Try and commit the transaction as spent. This means adding the transaction to mapWallet and marking each input as spent before writing to disk.
         if (!CommitTransactionSpent(wtxNew))
         {
             wxMessageBox("Error finalizing transaction", "Sending...");
@@ -3653,7 +3718,7 @@ bool SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew)
         // Broadcast
         //SATOSHI_END
 
-        //Try to get the transaction accepted. It gets upsert to memory pool here (mapTransactions) so updates are even allowed in certain scenarios 
+        //Try to get the transaction accepted. It gets upsert to memory pool here (mapTransactions) and updates are even allowed in certain scenarios. Connect inputs etc.
         if (!wtxNew.AcceptTransaction())
         {
             //SATOSHI_START

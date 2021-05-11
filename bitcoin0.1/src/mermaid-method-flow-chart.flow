@@ -42,4 +42,20 @@ CBlock::AddToBlockIndex-->CTxDb::Close
 CBlock::AddToBlockIndex-->RelayWalletTransactions
 
 
+CBlock::AcceptBlock-->CBlock::GetHash
+CBlock::AcceptBlock-->CBlockIndex::GetMedianTimePast
+CBlock::AcceptBlock-->GetNextWorkRequired
+CBlock::AcceptBlock-->CBlock::WriteToDisk
+CBlock::AcceptBlock-->CBlock::AddToBlockIndex
+CBlock::AcceptBlock-->RelayInventory
+
+ProcessBlock-->CBlock::GetHash
+ProcessBlock-->CBlock::CheckBlock
+ProcessBlock-->CBlock::AcceptBlock
+
+SendMoney-->CreateTransaction
+SendMoney-->CommitTransactionSpent
+SendMoney-->CMerkleTx::AcceptTransaction
+SendMoney-->CWalletTx::RelayWalletTransaction
+
 

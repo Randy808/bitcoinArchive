@@ -111,7 +111,11 @@ public:
     CRITICAL_SECTION* operator&() { return &cs; }
 };
 
+//SATOSHI_START
 // Automatically leave critical section when leaving block, needed for exception safety
+//SATOSHI_END
+
+//Just locks in a critical section, where critical sections represent mutexes for the varaibles they're named after
 class CCriticalBlock
 {
 protected:
@@ -122,10 +126,14 @@ public:
     ~CCriticalBlock() { LeaveCriticalSection(pcs); }
 };
 
+//SATOSHI_START
 // WARNING: This will catch continue and break!
 // break is caught with an assertion, but there's no way to detect continue.
 // I'd rather be careful than suffer the other more error prone syntax.
 // The compiler will optimise away all this loop junk.
+//SATOSHI_END
+
+//This critical block is a nested for-loop. The outer loop initializes a bool and asserts that criticalblockonce is false since the proper exit of the inner-loop should result in that (unless a break was called in loop). Inner loop initializes a 'CCriticalBlock' as 'criticalblock' and will only run for one iteration before terminating. The 'criticalBlock' initialization calls 'EnterCriticalSection' (https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-entercriticalsection) which forces the thread instantiating the critical block to wait for ownership of critical section and take it once ready. When 'LeaveCriticalSection' is called, thread ownership of the section is relinquished.
 #define CRITICAL_BLOCK(cs)     \
     for (bool fcriticalblockonce=true; fcriticalblockonce; assert(("break caught by CRITICAL_BLOCK!", !fcriticalblockonce)), fcriticalblockonce=false)  \
     for (CCriticalBlock criticalblock(cs); fcriticalblockonce && (cs.pszFile=__FILE__, cs.nLine=__LINE__, true); fcriticalblockonce=false, cs.pszFile=NULL, cs.nLine=0)

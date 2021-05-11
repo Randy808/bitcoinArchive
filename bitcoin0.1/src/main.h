@@ -865,52 +865,95 @@ public:
         return Hash(BEGIN(nVersion), END(nNonce));
     }
 
-
+    
+    //Builds hashMerkleRoot for blocks by adding all merkle tree transaction hashes into a vMerkleTree vector, layer by layer, and returning the last layer
+    //The root of the tree is the last element in vMerkleTree
     uint256 BuildMerkleTree() const
     {
         vMerkleTree.clear();
         foreach(const CTransaction& tx, vtx)
             vMerkleTree.push_back(tx.GetHash());
         int j = 0;
+
+        //for each index of the transactions working backward, shift nSize to equal the amount of iterations remaining to build up merkle tree. We're essentially making another layer of the tree with each pass, so we half nSize to represent how many elements the next layer needs. 
+        
+        //It's nSize +1 because of case with odd numbers. Think about if we just made a new layer in our first inner-loop iteration starting from an nSize of 3. The new layer has 2 elements since the first element in the new second layer is the hash of the first 2 elements, and the second element in the new second layer is the doubled up hash of the 3rd element. If we changed `(nSize + 1) / 2`  to `nSize / 2` then the nSize representing our new second layer would be `1` since we're doing integer division which truncates the `.5` from the `1.5` we would've had from doing floating point division. `1` is not indicative of the second layer, thus we add `1` before dividing. For even numbers, adding `1` doesn't change what it would have been.
         for (int nSize = vtx.size(); nSize > 1; nSize = (nSize + 1) / 2)
         {
+            //On first iteration of outer loop, iterate the inner-loop indexes by 2 because we're grabbing 2 elements at a time in the loop body. The loop body makes a hash using both transactions and pops it back into vMerkleTree. 
             for (int i = 0; i < nSize; i += 2)
             {
+                //Look at the case of i2 when i is 0 and nSize is 1, i2 will be 0 just like i and it'll hash with itself
                 int i2 = min(i+1, nSize-1);
                 vMerkleTree.push_back(Hash(BEGIN(vMerkleTree[j+i]),  END(vMerkleTree[j+i]),
                                            BEGIN(vMerkleTree[j+i2]), END(vMerkleTree[j+i2])));
             }
+
+            //'j' is the offset making sure that we always do the inner-loop processing on transactions tha were just added and not processed yet
             j += nSize;
         }
+
+        //Returns a reference to the root of the tree
         return (vMerkleTree.empty() ? 0 : vMerkleTree.back());
     }
 
+    //get merkle branch from index node to root, only made up of siblings
+    //The branch vector should consist of all the hashes the element at nIndex would need to hash with to create the root: https://bitcoin.stackexchange.com/questions/50674/why-is-the-full-merkle-path-needed-to-verify-a-transaction
     vector<uint256> GetMerkleBranch(int nIndex) const
     {
+        //If merkleTree is empty when a branch is requested
         if (vMerkleTree.empty())
+            //Build it using transactions in block
             BuildMerkleTree();
+
+        //Now we make a vector representing a merkle branch
         vector<uint256> vMerkleBranch;
+
+        //intiialize offset to 0
         int j = 0;
+
+        //We iterate the same way we did when building merkle tree except now we don't have to calculate hashes
+        //for every layer of tree
         for (int nSize = vtx.size(); nSize > 1; nSize = (nSize + 1) / 2)
         {
+            //get the index of sibling in tree (using index xord with 1), or the same element (it it's the last transaction)
             int i = min(nIndex^1, nSize-1);
+
+            //Add the sibling index
             vMerkleBranch.push_back(vMerkleTree[j+i]);
+
+            //divide the nIndex by 2 through bit shifting to right
+            //This shifts to the correct index in the second layer, divided by 2 because the next layer has half number of elements
             nIndex >>= 1;
+
+            //Moves the index to start of second layer of tree
             j += nSize;
         }
         return vMerkleBranch;
     }
 
+    //Checks the merkle branch
+    //branch given should be from hash of transaction to root
     static uint256 CheckMerkleBranch(uint256 hash, const vector<uint256>& vMerkleBranch, int nIndex)
     {
+        //If index is invalid, return
         if (nIndex == -1)
             return 0;
+
+        //for each hashed entry in merklebranch
         foreach(const uint256& otherside, vMerkleBranch)
         {
+            //if nIndex bit masked 'and'ed with 1  is above 0
+            //Meaning if nIndex is odd
             if (nIndex & 1)
+                //Get the combined hash of current element and hash passed in (presumably of transaction at nIndex) or the hash of the last layer
                 hash = Hash(BEGIN(otherside), END(otherside), BEGIN(hash), END(hash));
+            //If there is no sibling
             else
+                //if nIndex is even, hash comes first
                 hash = Hash(BEGIN(hash), END(hash), BEGIN(otherside), END(otherside));
+
+            //parity of index matters because it determines which hash to keep in the first part
             nIndex >>= 1;
         }
         return hash;
@@ -1094,12 +1137,15 @@ public:
         unsigned int* pend = &pmedian[nMedianTimeSpan];
 
         const CBlockIndex* pindex = this;
+
+        //for every block index from current to nMedianTimeSpan (which is 11), given the index exists
         for (int i = 0; i < nMedianTimeSpan && pindex; i++, pindex = pindex->pprev)
+            //Make pbegin at index before nMedianTimeSpan equal the ime it took for that block index
             *(--pbegin) = pindex->nTime;
 
         sort(pbegin, pend);
 
-        //Get midway pointer of pMedian between pbegin and pend
+        //Get midway pointer of pMedian between pbegin and pend to get the median time (since pbegin is just pMedian at 0 index (or the farthest number from 11 where previous blocks exist))
         return pbegin[(pend - pbegin)/2];
     }
 

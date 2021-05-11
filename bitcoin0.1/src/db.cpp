@@ -9,9 +9,11 @@
 
 
 
+//SATOSHI_START
 //
 // CDB
 //
+//SATOSHI_END
 
 static CCriticalSection cs_db;
 static bool fDbEnvInit = false;
