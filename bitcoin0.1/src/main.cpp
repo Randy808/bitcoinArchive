@@ -975,10 +975,14 @@ unsigned int GetNextWorkRequired(const CBlockIndex *pindexLast)
     //As Satoshi's comment says, this represents 2 weeks in seconds
     const unsigned int nTargetTimespan = 14 * 24 * 60 * 60; //<STAOSHI_START>// two weeks</SATOSHI_END>
 
-    //600 seconds would be keeping up with the target timespan above
+    //600 seconds (10 minutes) would be keeping up with the target timespan above
     const unsigned int nTargetSpacing = 10 * 60;
 
-    //interval is 2 weeks in seconds divided by 600 seconds? So it's how many 10 minute intervals there will be?
+
+
+    //nInterval comes out to the value 2016. This is how many blocks satoshi would like mined within a 2 week interval which should be about a block every 10 minutes
+    //desiredTimespan/blocksMined = targetSpacing 
+    //Where blocksMined = nInterval
     const unsigned int nInterval = nTargetTimespan / nTargetSpacing;
 
     //SATOSHI_START
@@ -1045,11 +1049,8 @@ unsigned int GetNextWorkRequired(const CBlockIndex *pindexLast)
     //And divides it by target timespan. Not sure what this acheives...nTargetTimespan is 2 weeks
     bnNew /= nTargetTimespan;
 
-    //bNew is difficulty*(block_addition_rate) where block_addition_rate = timeTaken/2weeks
+    //bNew is old_difficulty*(block_addition_rate) where block_addition_rate = time_taken_to_actually_make_2weeks_of_blocks/2weeks
     //slows in slow mining and fastens?
-
-    //bNew is how many periods of 2 weeks went by?
-    //Why was it initialized to pindexLast nBits??
 
     //if bnNew which presumably represens the time exeeds bnProofOfWorkLimit (time limit?)
     if (bnNew > bnProofOfWorkLimit)
@@ -2691,7 +2692,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
                     pfrom->PushMessage("block", block);
                 }
             }
-            //If it's a recognizable type (since AlreadyHave shows that only a few types are defined for type int)
+            //If it's a recognizable type (since AlreadyHave shows that only a few types are defined for type inv)
             else if (inv.IsKnownType())
             {
                 //S
@@ -2711,91 +2712,174 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         }
     }
 
-    //CHECKPOINT
-
+    //if the command is 'getblocks'
+    //queues blocks to send to requesting node
     else if (strCommand == "getblocks")
     {
+        //declare a block locator
         CBlockLocator locator;
+
+        //hashStop is the hash of the transaction you want to retrieve from beginning
         uint256 hashStop;
+
+        //Use vRecv CDataStream to desrialize locator, then use vRecv buffer to deserialize into hashStop
         vRecv >> locator >> hashStop;
 
+        //SATOSHI_START
         // Find the first block the caller has in the main chain
+        //SATOSHI_END
         CBlockIndex *pindex = locator.GetBlockIndex();
 
+        //SATOSHI_START
         // Send the rest of the chain
+        //SATOSHI_END
+
+        //If the first block of mainchain was found
         if (pindex)
+            //Get the block after it
             pindex = pindex->pnext;
+
+        //log the current block number and where the stopping point is
         printf("getblocks %d to %s\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0, 14).c_str());
+
+        //for every block to the end
         for (; pindex; pindex = pindex->pnext)
         {
+            //If pindex's block hash is equal to the stopping hash
             if (pindex->GetBlockHash() == hashStop)
             {
+                //log
                 printf("  getblocks stopping at %d %s\n", pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 14).c_str());
+
+                //break out of the loop
                 break;
             }
 
+            //SATOSHI_START
             // Bypass setInventoryKnown in case an inventory message got lost
+            //SATOSHI_END
+
+            //lock the inventory of the node requesting data
             CRITICAL_BLOCK(pfrom->cs_inventory)
             {
+                //inventory is made as a block message (indicated as MSG_BLOCK) and the block hash is atached to inventory as well
                 CInv inv(MSG_BLOCK, pindex->GetBlockHash());
+
+                //SATOSHI_START
                 // returns true if wasn't already contained in the set
+                //SATOSHI_END
+
+                //If the inventory is NOT already in the known2 set
                 if (pfrom->setInventoryKnown2.insert(inv).second)
                 {
+                    //erase the inventory from the known inventory
                     pfrom->setInventoryKnown.erase(inv);
+
+                    //push the inventory to send
                     pfrom->vInventoryToSend.push_back(inv);
                 }
             }
         }
     }
 
+    //if the command is a transaction
+    //So if a transaction is being relayed
     else if (strCommand == "tx")
     {
+        //declare work queue vector. It seems like the work queue is supposed to represent all the newly accepted transactions that need to be checked as a dependency for orphan blocks
         vector<uint256> vWorkQueue;
+
+        //Wrap the vRecv CDataStream in another CDataStream. Probably to make copy of data stream.
         CDataStream vMsg(vRecv);
+
+        //Declare transaction
         CTransaction tx;
+
+        //Read in transaction from vRecv data stream
         vRecv >> tx;
 
+        //Create the inventory as a transaction message
         CInv inv(MSG_TX, tx.GetHash());
+
+        //Add inventory to known in the receiving node
         pfrom->AddInventoryKnown(inv);
 
+        //declare fMissingInputs to be populated by tx.AcceptTransaction
         bool fMissingInputs = false;
+
+        //if the transaction is accepted
         if (tx.AcceptTransaction(true, &fMissingInputs))
         {
+            //Adds the transaction to mapWallet and writes to db if ours
             AddToWalletIfMine(tx, NULL);
+
+            //Send transaction to other nodes with CDataStream copy
             RelayMessage(inv, vMsg);
+
+            //Erase the inventory from mapAlreadyAskedFor if it was in there (because we just go it?)
             mapAlreadyAskedFor.erase(inv);
+
+            //Add the inventory hash to work queue
             vWorkQueue.push_back(inv.hash);
 
+
+            //Satoshi comment pretty descriptive here
+            //SATOSHI_START
             // Recursively process any orphan transactions that depended on this one
+            //SATOSHI_END
+
+            //Look through all elements of work queue
             for (int i = 0; i < vWorkQueue.size(); i++)
             {
+                //Get inventory hash from iterating index of workQueue
                 uint256 hashPrev = vWorkQueue[i];
+
+                //for every multimap in mapOrphanTransactionsByPrev where the iterator isn't equal to the map at hashprev
                 for (multimap<uint256, CDataStream *>::iterator mi = mapOrphanTransactionsByPrev.lower_bound(hashPrev);
                      mi != mapOrphanTransactionsByPrev.upper_bound(hashPrev);
                      ++mi)
                 {
+                    //Retrieve the data strea,
                     const CDataStream &vMsg = *((*mi).second);
+
+                    //Declare a transaction
                     CTransaction tx;
+
+                    //Read the data stream into transaction
                     CDataStream(vMsg) >> tx;
+
+                    //Create a new inventory of the transaction
                     CInv inv(MSG_TX, tx.GetHash());
 
+                    //Try to accept the transaction
                     if (tx.AcceptTransaction(true))
                     {
                         printf("   accepted orphan tx %s\n", inv.hash.ToString().substr(0, 6).c_str());
+                        //Add to wallet if transaction is ours
                         AddToWalletIfMine(tx, NULL);
+
+                        //Relay the message to other nodes
                         RelayMessage(inv, vMsg);
+
+                        //Erase the inventory from the inventory we've queued to ask for
                         mapAlreadyAskedFor.erase(inv);
+
+                        //push theis inventory into the work queue
                         vWorkQueue.push_back(inv.hash);
                     }
                 }
             }
 
+            //Delete every transaction from workQueue in orphan store (since workQueue represents all newly accepted transactions)
             foreach (uint256 hash, vWorkQueue)
                 EraseOrphanTx(hash);
         }
+        //If the transaction received pointed to some input transactions we don't have
         else if (fMissingInputs)
         {
+            //log
             printf("storing orphan tx %s\n", inv.hash.ToString().substr(0, 6).c_str());
+            //Store the transaction as an orphan
             AddOrphanTx(vMsg);
         }
     }
@@ -2921,7 +3005,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
     return true;
 }
 
-//See what other nodes have for addresses, inventory, and data, and if what's in their data queue doesn't exist in our seen data for them, our node will ask for the data. This method is run on node startup and runs within an endless loop.
+//Look through what we have queued to send on other nodes and extract that into vInventoryToSend (populated in RelayWalletTransactions and similar functions). Then actually send the message to the other nodes. This method is run on node startup and runs within an endless loop.
 bool SendMessages(CNode *pto)
 {
     //Check for shutdown
@@ -3455,80 +3539,156 @@ int64 GetBalance()
     return nTotal;
 }
 
+
+//Find subset of transactions in mapWallet where the sum of their outputs most closely matches ntargetValue
 bool SelectCoins(int64 nTargetValue, set<CWalletTx *> &setCoinsRet)
 {
+    //clear this setCoinRet set in the param
     setCoinsRet.clear();
 
+    //SATOSHI_START
     // List of values less than target
+    //SATOSHI_END
+
+    //Declare nLowestLarger as the max 64 bit integer
     int64 nLowestLarger = _I64_MAX;
+
+    //Initialize wallet transaction to null
     CWalletTx *pcoinLowestLarger = NULL;
+
+    //Make a vector of int to transaction as vValue
     vector<pair<int64, CWalletTx *>> vValue;
+
+    //Make nTotalLower = 0
     int64 nTotalLower = 0;
 
+    //lock mapWallet vector
     CRITICAL_BLOCK(cs_mapWallet)
     {
+        //For every hash-transaction pair in mapWallet
         for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
+            //Get the transaction
             CWalletTx *pcoin = &(*it).second;
+
+            //See if the transaction isFinal or it's spent because we want to continue in that case
             if (!pcoin->IsFinal() || pcoin->fSpent)
                 continue;
+
+            //Get the unspent transaction output for the transaction in our wallet
             int64 n = pcoin->GetCredit();
+
+            //If the amount is negative somehow, continue
             if (n <= 0)
                 continue;
+
+            //If the amount is less than the target value in the parameter
             if (n < nTargetValue)
             {
+                //Add the amount and hash to the vValue vector
                 vValue.push_back(make_pair(n, pcoin));
+
+                //Add the amount to nTotalLowe
                 nTotalLower += n;
             }
+
+            //If the amount of the coin is equal to the targetValue, then put the transaction into the output coin set and return
             else if (n == nTargetValue)
             {
                 setCoinsRet.insert(pcoin);
                 return true;
             }
+
+            //If the amount is greater than the targetValue but less than the largest number of coins
             else if (n < nLowestLarger)
             {
+                //Make the largest number of coins equal n and
                 nLowestLarger = n;
+                //make pcoinLowestLarger take the place of the lowest valued transaction that's larger than the target
                 pcoinLowestLarger = pcoin;
             }
         }
     }
 
+    //If all the coins that were lower than the target value were summed up and still didn't hit target
     if (nTotalLower < nTargetValue)
     {
+        //return false if we have no other coins
         if (pcoinLowestLarger == NULL)
             return false;
+        
+        //Just put one coin that's larger than the target in the output transaction set
         setCoinsRet.insert(pcoinLowestLarger);
+        //and return
         return true;
     }
 
+    //SATOSHI_START
     // Solve subset sum by stochastic approximation
+    //SATOSHI_END
+
+    //Sort the value of coins smaller than target
     sort(vValue.rbegin(), vValue.rend());
+
+    //A vector that will indicate whether the index in vVector with the same position i was chosen in that iteration of subset search below
     vector<char> vfIncluded;
+
+    //A vector that is a copy of the best subset of transactions that most closely match the target value
     vector<char> vfBest(vValue.size(), true);
+
+    //Set the best variable equal to the sum of utxos (unspent outputs) lower than target
     int64 nBest = nTotalLower;
 
+
+    //this is subset finding to see which set of small coins can closest match our desired values
+    //For 1000 iterations where the best variable isn't equal to the target
     for (int nRep = 0; nRep < 1000 && nBest != nTargetValue; nRep++)
     {
+        //Set the included vector to equal the size of small transaction array and set ever index value to false
         vfIncluded.assign(vValue.size(), false);
+
+        //initialize the value total for this iteration to 0
         int64 nTotal = 0;
+
+        //Set reached target to false
         bool fReachedTarget = false;
+
+        //For 2 passes (where the value doesn't reach the target)
+        //So we're trying to add each transaction twice
         for (int nPass = 0; nPass < 2 && !fReachedTarget; nPass++)
         {
+            //For each small transaction
             for (int i = 0; i < vValue.size(); i++)
             {
+                //if this is the first pass then make this iteration have a .5 chance of happening, and if it's the second time then run if there's nothing inserted for the i'th place of vIncluded
                 if (nPass == 0 ? rand() % 2 : !vfIncluded[i])
                 {
+                    //add the value to the total
                     nTotal += vValue[i].first;
+
+                    //Set included to true for the index
                     vfIncluded[i] = true;
+
+                    //if the total is greater than or equal to the target at this point
                     if (nTotal >= nTargetValue)
                     {
+                        //set reachedTarget to true
                         fReachedTarget = true;
+
+                        //if the the nTotal is less than the best (the subset sum of small transactions is less than the sum all small transactions)
                         if (nTotal < nBest)
                         {
+                            //set the best equal to the total because it's closer to target
                             nBest = nTotal;
+
+                            //Set the best vector pointer to the included vector
                             vfBest = vfIncluded;
                         }
+
+                        //subtract the amount just added from total
                         nTotal -= vValue[i].first;
+
+                        //and set included to false
                         vfIncluded[i] = false;
                     }
                 }
@@ -3536,23 +3696,34 @@ bool SelectCoins(int64 nTargetValue, set<CWalletTx *> &setCoinsRet)
         }
     }
 
+    //SATOSHI_START
     // If the next larger is still closer, return it
+    //SATOSHI_END
+    //Same as what Satoshi is saying above^
     if (pcoinLowestLarger && nLowestLarger - nTargetValue <= nBest - nTargetValue)
         setCoinsRet.insert(pcoinLowestLarger);
     else
     {
+        //for every index of small transactions
         for (int i = 0; i < vValue.size(); i++)
+            //if the small transaction is in the winning subset
             if (vfBest[i])
+                //insert the transaction in the output coin set
                 setCoinsRet.insert(vValue[i].second);
 
+        //SATOSHI_START
         //// debug print
+        //SATOSHI_END
         printf("SelectCoins() best subset: ");
+
+        //for every transaction in vValue, literally just print some debug statements
         for (int i = 0; i < vValue.size(); i++)
             if (vfBest[i])
                 printf("%s ", FormatMoney(vValue[i].first).c_str());
         printf("total %s\n", FormatMoney(nBest).c_str());
     }
 
+    //terminate!
     return true;
 }
 
@@ -3639,6 +3810,7 @@ bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew, in
 //SATOSHI_START
 // Call after CreateTransaction unless you want to abort
 //SATOSHI_END
+
 //Adds a wallet transaction to mapWallet and marks each of the input transactions as spent before updating the input transactions to disk
 bool CommitTransactionSpent(const CWalletTx &wtxNew)
 {
@@ -3718,7 +3890,7 @@ bool SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew)
         // Broadcast
         //SATOSHI_END
 
-        //Try to get the transaction accepted. It gets upsert to memory pool here (mapTransactions) and updates are even allowed in certain scenarios. Connect inputs etc.
+        //Try to get the transaction accepted. It gets upsert to memory pool here (mapTransactions as opposed to adding it to mapWallet above) and updates are even allowed in certain scenarios. Connect inputs etc.
         if (!wtxNew.AcceptTransaction())
         {
             //SATOSHI_START

@@ -541,6 +541,8 @@ void ThreadSocketHandler2(void *parg)
         //The socket max is hListenSocket if defined, 0 otherwise
         hSocketMax = max(hSocketMax, hListenSocket);
 
+        /****Adds the sockets in nodes to fdsetRecv and fdsetSend**/
+
         //Lock vNodes
         CRITICAL_BLOCK(cs_vNodes)
         {
@@ -621,7 +623,7 @@ void ThreadSocketHandler2(void *parg)
 
             //Make socket handler from calling 'accept' which means the socket is trying to accept connections made to it
 
-            //The first param is the socket being used to retrieve data, the second parameter is the address of the caller, and the third is the lnegth of the address structure used to store caller info. 
+            //The first param is the socket being used to retrieve data, the second parameter is where the address of the caller will be populated, and the third is the lnegth of the address structure used to store caller info. 
             
             //It returns the descriptor of the socket that ends up handling the connection, which may not be the socket that received the data which is 'hListenSocket' here
             SOCKET hSocket = accept(hListenSocket, (struct sockaddr *)&sockaddr, &len);
@@ -679,6 +681,8 @@ void ThreadSocketHandler2(void *parg)
             //
             //SATOSHI_END
 
+            //**This is where the node's receive buffer is populated**
+
             //If hSocket is in fdSetRecv which it should be because all pnode sockets were added in the section under the SATOSHI_COMMENT 'Find which sockets have data to receive'
             if (FD_ISSET(hSocket, &fdsetRecv))
             {
@@ -702,52 +706,96 @@ void ThreadSocketHandler2(void *parg)
 
 
                     //receive information from hSocket into vRecv[nPos] because if the stream was already sized nPos bytes then it probably had something in it that we don't want to override, hence the offset. nBufSize is the buffer we want to read into.
+                    //nBytes contains amount of data transmitted to socket, should be less than buffer
                     int nBytes = recv(hSocket, &vRecv[nPos], nBufSize, 0);
+
+                    //resize it to only hold the actual bytes of data
                     vRecv.resize(nPos + max(nBytes, 0));
+
+                    //If nBytes was 0 (so no data was read from socket connection)
                     if (nBytes == 0)
                     {
+                        //SATOSHI_START
                         // socket closed gracefully
+                        //SATOSHI_END
+
+                        //If disconnect is not false
                         if (!pnode->fDisconnect)
+                            //print that the socket is about to close (doesn't need to print if pnode already marked for disconnect)
                             printf("recv: socket closed\n");
+
+                        //then close it
                         pnode->fDisconnect = true;
                     }
+                    //if nBytes was negative (there was an error)
                     else if (nBytes < 0)
                     {
+                        //sATOSHI_START
                         // socket error
+                        //SATOSHI_END
+
+                        //Get the socket error
                         int nErr = WSAGetLastError();
+
+                        //If socket error is unexpected
                         if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
                         {
+                            //if pnode not already marked for disconnect
                             if (!pnode->fDisconnect)
+                                //log
                                 printf("recv failed: %d\n", nErr);
+                            //and disconnect
                             pnode->fDisconnect = true;
                         }
                     }
                 }
             }
 
+            //SATOSHI_START
             //
             // Send
             //
+            //SATOSHI_END
+
+            //**This is where the node object's send buffer is read and sent**
+
+            //check if file descriptor for hSocket is set in sending file descriptor set
             if (FD_ISSET(hSocket, &fdsetSend))
             {
+
+                //lock send buffer
                 TRY_CRITICAL_BLOCK(pnode->cs_vSend)
                 {
+                    //Extract buffer into data stream
                     CDataStream &vSend = pnode->vSend;
+
+                    //If send buffer is NOT empty
                     if (!vSend.empty())
                     {
+                        //Just send the bytes using hsocket, starting from vSend's beginning to vSend's end, and 0 to represent no flags (https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send)
                         int nBytes = send(hSocket, &vSend[0], vSend.size(), 0);
+
+                        //If nBytes over 0 were sent
                         if (nBytes > 0)
                         {
+                            //erase the parts that were sent
                             vSend.erase(vSend.begin(), vSend.begin() + nBytes);
                         }
+
+                        //if no bytes were sent 
                         else if (nBytes == 0)
                         {
+
+                            //then just disconnect if ready
                             if (pnode->ReadyToDisconnect())
                                 pnode->vSend.clear();
                         }
                         else
                         {
+                            //nBytes is negative so print error
                             printf("send error %d\n", nBytes);
+
+                            //and disconnect if ready
                             if (pnode->ReadyToDisconnect())
                                 pnode->vSend.clear();
                         }

@@ -440,25 +440,42 @@ public:
         return (vin.size() == 1 && vin[0].prevout.IsNull());
     }
 
+    //Basic checks to make sure payouts are non-negative and inputs actually link to source transactions
     bool CheckTransaction() const
     {
+        //SATOSHI_START
         // Basic checks that don't depend on any context
+        //SATOSHI_END
+
+        //All transactions must have one input and one output
         if (vin.empty() || vout.empty())
+            //error out if not the case
             return error("CTransaction::CheckTransaction() : vin or vout empty");
 
+        //SATOSHI_START
         // Check for negative values
+        //SATOSHI_END
+
+        //For each output in this transaction's output array 
         foreach(const CTxOut& txout, vout)
+            //if the output of teh transaction is negative
             if (txout.nValue < 0)
+                //error out
                 return error("CTransaction::CheckTransaction() : txout.nValue negative");
 
+        //if the transaction is a coinbase (first transaction in a block that distributes money to block creator)
         if (IsCoinBase())
         {
+            //Make sure the scriptSig is between the sizes of 2 and 100
             if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
+                //error out otherwise
                 return error("CTransaction::CheckTransaction() : coinbase script size");
         }
         else
         {
+            //for each input in input array (where every input is a reference to a source transaction)
             foreach(const CTxIn& txin, vin)
+                //Make sure that the input's source transaction metadata is not null
                 if (txin.prevout.IsNull())
                     return error("CTransaction::CheckTransaction() : prevout is null");
         }
@@ -1128,11 +1145,13 @@ public:
     enum { nMedianTimeSpan=11 };
 
 
-    //Gets median transaction in block?
-    //What is pmedian?
+    //Returns the median of the last 11 block timestamps
     int64 GetMedianTimePast() const
     {
+        //Declare an array called pmedian. pmedian will be populated with the timestamps of blocks placed in reverse order.
         unsigned int pmedian[nMedianTimeSpan];
+
+        //pbegin will be moved to point to all the indexes of the array until it moves to index 0
         unsigned int* pbegin = &pmedian[nMedianTimeSpan];
         unsigned int* pend = &pmedian[nMedianTimeSpan];
 
@@ -1307,9 +1326,12 @@ public:
         vHave.push_back(hashGenesisBlock);
     }
 
+    //Just like the Satoshi comment says, this method finds the first block in vHave that's in the mainchain, and returns it
     CBlockIndex* GetBlockIndex()
     {
+        //SATOSHI_START
         // Find the first block the caller has in the main chain
+        //SATOSHI_END
         foreach(const uint256& hash, vHave)
         {
             map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hash);

@@ -972,49 +972,100 @@ bool Solver(const CScript& scriptPubKey, vector<pair<opcodetype, valtype> >& vSo
 }
 
 
+//This function will sign the message digest hash and place the signature in scriptSigRet. in the signature vector the pubkey used to sign may or may not be in the 'scriptSigRet' signature vector.
 bool Solver(const CScript& scriptPubKey, uint256 hash, int nHashType, CScript& scriptSigRet)
 {
+    //clear the last parameter's CScript
     scriptSigRet.clear();
 
+    //create a vector of (opcodetype, valtype) pairs called 'vSolution'
     vector<pair<opcodetype, valtype> > vSolution;
+
+    //if the scriptPubKeyParameter and the empty solution vector returns false
     if (!Solver(scriptPubKey, vSolution))
+        //bailout
         return false;
 
+    //SATOSHI_START
     // Compile solution
+    //SATOSHI_END
+
+    //lock mapKeys
     CRITICAL_BLOCK(cs_mapKeys)
     {
+        //for each pair in the computed solution
         foreach(PAIRTYPE(opcodetype, valtype)& item, vSolution)
         {
+            //if the opcodetype is equal to op_pubkey enum value
             if (item.first == OP_PUBKEY)
             {
+                //SATOSHI_START
                 // Sign
+                //SATOSHI_END
+                //take value of valtype in solution pair (where valtype is a typedef for char vector)
                 const valtype& vchPubKey = item.second;
+
+                //See if the key in the vchPubKey vector is in mapKeys
                 if (!mapKeys.count(vchPubKey))
+                    //error out if the key isn't present
                     return false;
+
+                //if the hash in the parameter is non-zero
                 if (hash != 0)
                 {
+                    //Initialize new char vector (don't know why didn't use valtype)
                     vector<unsigned char> vchSig;
+
+                    //Call the static Sign method on CKey with the key as the first parameter, the hash as the seconds, and the presumed output as the just initialized vchSig
                     if (!CKey::Sign(mapKeys[vchPubKey], hash, vchSig))
+                        //return false if errored out
                         return false;
+                    //Add nhashType to the signature vector
                     vchSig.push_back((unsigned char)nHashType);
+
+                    //Add the signature vector to scriptSigRet, the last parameter passed in that's probably intended to hold the return value
                     scriptSigRet << vchSig;
                 }
             }
+
+            //if the optype is a public key hash
             else if (item.first == OP_PUBKEYHASH)
             {
+                //SATOSHI_START
                 // Sign and give pubkey
+                //SATOSHI_END
+
+                //Use the public key hash from valtype of solution pair to find real key
                 map<uint160, valtype>::iterator mi = mapPubKeys.find(uint160(item.second));
+
+                //if not found
                 if (mi == mapPubKeys.end())
+                    //return false
                     return false;
+                
+                //Extract the public key from the item located using pubkey hash
                 const vector<unsigned char>& vchPubKey = (*mi).second;
+
+                //if mapKeys doesn't have he public key
                 if (!mapKeys.count(vchPubKey))
+                    //bailout
                     return false;
+
+                //If hash is non-zero
                 if (hash != 0)
                 {
+                    //Make signature container
                     vector<unsigned char> vchSig;
+
+                    //Sign hash using public key
                     if (!CKey::Sign(mapKeys[vchPubKey], hash, vchSig))
+                        //if not, bail
                         return false;
+
+                    //push the hash type into vchSig
                     vchSig.push_back((unsigned char)nHashType);
+                    
+                    //Build presumed return script by assemling the signature and the public key used
                     scriptSigRet << vchSig << vchPubKey;
                 }
             }

@@ -1,0 +1,19 @@
+How is mapAskFor populated?
+
+Is mapRelay exclusively used to store any data that's not a block but needs to get sent to other nodes?
+
+Where does the message made in RelayWalletTransaction get sent to other nodes?
+
+-In 'SendMessages' the inventory queued for sending on each node is checked and sent.
+
+What is the difference between setInventoryKnown and setInventoryKnown2?
+
+
+-----
+*Quick files to read through in modern bitcoin source*
+Commit: 7cb0bcb6811070786937fb5cc0af82cf4ef21ff0
+bitcoin/src/qt/walletcontroller.cpp
+bitcoin/src/chain.h
+bitcoin/src/chain.cpp
+bitcoin/src/chainparams.cpp
+bitcoin/src/bitcoin-tx.cpp

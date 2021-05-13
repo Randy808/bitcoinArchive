@@ -786,9 +786,16 @@ inline void RelayInventory(const CInv& inv)
 template<typename T>
 void RelayMessage(const CInv& inv, const T& a)
 {
+    //Makes a data stream
     CDataStream ss(SER_NETWORK);
+
+    //reserves space
     ss.reserve(10000);
+
+    //puts actual data into ss
     ss << a;
+
+    //Relay message with inv metadata
     RelayMessage(inv, ss);
 }
 

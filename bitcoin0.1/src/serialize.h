@@ -43,6 +43,9 @@ enum
     SER_BLOCKHEADERONLY = (1 << 17),
 };
 
+
+//'Statements' is usually a sequence of READWRITE macro calls
+//CHECKPOINT
 #define IMPLEMENT_SERIALIZE(statements)    \
     unsigned int GetSerializeSize(int nType=0, int nVersion=VERSION) const  \
     {                                           \
@@ -967,7 +970,13 @@ public:
     template<typename T>
     CDataStream& operator>>(T& obj)
     {
+        //SATOSHI_START
         // Unserialize from this stream
+        //SATOSHI_END
+
+        //Unserialize using the correct deserialization method from the choices above? No, there's no overload for CBlockLocator
+        //From overload: 'inline void Unserialize(Stream& is, T& a, long nType, int nVersion=VERSION)'
+        //Because CBlockLocator implements IMPLEMENT_SERIALIZE
         ::Unserialize(*this, obj, nType, nVersion);
         return (*this);
     }
