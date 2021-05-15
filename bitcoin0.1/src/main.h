@@ -519,11 +519,18 @@ public:
         return nValueOut;
     }
 
+    //Gets transaction fee as function of transaction size
     int64 GetMinFee(bool fDiscount=false) const
     {
+        //Get size of this transaction if serialized
         unsigned int nBytes = ::GetSerializeSize(*this, SER_NETWORK);
+
+        //if fDiscount is true and this transaction is under 10,000 bytes
         if (fDiscount && nBytes < 10000)
+            //its free; no transaction cost
             return 0;
+        
+        //Otherwise the transaction cost is a function of it's size
         return (1 + (int64)nBytes / 1000) * CENT;
     }
 

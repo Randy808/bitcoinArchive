@@ -255,14 +255,21 @@ CNode *FindNode(unsigned int ip)
     return NULL;
 }
 
+
+//Return node from vNodes that has that address, return null if not found.
 CNode *FindNode(CAddress addr)
 {
+    //lock vNodes
     CRITICAL_BLOCK(cs_vNodes)
     {
+        //for each node in vNodes
         foreach (CNode *pnode, vNodes)
+            //Check if the address of that node reference is equal to the address in the parameter
             if (pnode->addr == addr)
+                //return the reference to that node that matches he address
                 return (pnode);
     }
+    //if no nodes were found, return null
     return NULL;
 }
 
@@ -351,6 +358,7 @@ void ThreadSocketHandler(void *parg)
     }
 }
 
+//listens for any nodes that may connect, and adds the node to vNodes. Also looks through all existing node references and sends data to them if there exists in our send buffer on that node reference.
 void ThreadSocketHandler2(void *parg)
 {
     //log thread start
@@ -808,6 +816,7 @@ void ThreadSocketHandler2(void *parg)
     }
 }
 
+//open connections to found ip addresses
 void ThreadOpenConnections(void *parg)
 {
     IMPLEMENT_RANDOMIZE_STACK(ThreadOpenConnections(parg));
@@ -1117,7 +1126,10 @@ void ThreadMessageHandler2(void *parg)
     }
 }
 
+//SATOSHI_START
 //// todo: start one thread per processor, use getenv("NUMBER_OF_PROCESSORS")
+//SATOSHI_END
+//Just runs bitcoin miner function in main
 void ThreadBitcoinMiner(void *parg)
 {
     vfThreadRunning[3] = true;

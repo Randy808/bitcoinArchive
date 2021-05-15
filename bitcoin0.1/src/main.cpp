@@ -3727,77 +3727,155 @@ bool SelectCoins(int64 nTargetValue, set<CWalletTx *> &setCoinsRet)
     return true;
 }
 
+//Creates a transaction with source transactions with sum greater or equal than nValue. Adds output to sender if change exists, add inputs to Vin, sign all source transaction outputs, and add source transactions to the wallet transaction's vtxprev
 bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew, int64 &nFeeRequiredRet)
 {
+    //Set the required fee to 0
     nFeeRequiredRet = 0;
+
+    //lock main
     CRITICAL_BLOCK(cs_main)
     {
+        //SATOSHI_START
         // txdb must be opened before the mapWallet lock
+        //SATOSHI_END
         CTxDB txdb("r");
+
+        //lock wallet
         CRITICAL_BLOCK(cs_mapWallet)
         {
+            //I have no idea where nTransactionFee is ever modified aside from initialization
             int64 nFee = nTransactionFee;
+
+            //endless loop 
             loop
             {
+                //The wallet transaction in the param should not be initialized
+
+                //Ensure param transaction clears its inputs and outputs just in case
                 wtxNew.vin.clear();
                 wtxNew.vout.clear();
+
+                //If the target value of transaction is less than 0 then return
                 if (nValue < 0)
                     return false;
+
+                //nValueOut represents the value that will be output from transaction
                 int64 nValueOut = nValue;
+
+                //Add on the fee to nValue
                 nValue += nFee;
 
+                //SATOSHI_START
                 // Choose coins to use
+                //SATOSHI_END
+
+                //Create a set of wallet transactoons
                 set<CWalletTx *> setCoins;
+
+                //Populate the set of transactions with a subset of transactions in mapWallet that most closely correspond to nValue
                 if (!SelectCoins(nValue, setCoins))
                     return false;
+
+                //make a placeholder the sum of the transaction outputs
                 int64 nValueIn = 0;
+
+                //For each transaction
                 foreach (CWalletTx *pcoin, setCoins)
+                    //Sum the value of all transaction into nValueIn
                     nValueIn += pcoin->GetCredit();
 
+                //SATOSHI_START
                 // Fill vout[0] to the payee
+                //SATOSHI_END
+
+                //Add an output payment to scriptPubKey (which I imagine is the recipient address)
                 wtxNew.vout.push_back(CTxOut(nValueOut, scriptPubKey));
 
+                //SATOSHI_START
                 // Fill vout[1] back to self with any change
+                //SATOSHI_END
+
+                //If the value in is greater than nValue
                 if (nValueIn > nValue)
                 {
+                    //SATOSHI_START
                     // Use the same key as one of the coins
+                    //SAOSHI_END
+
+                    //Make vector of chars
                     vector<unsigned char> vchPubKey;
+
+                    //Get the first transaction in list used to source funds for this transaction
                     CTransaction &txFirst = *(*setCoins.begin());
+
+                    //For every output in the first transaction
                     foreach (const CTxOut &txout, txFirst.vout)
+                        //if the output is aimed at us
                         if (txout.IsMine())
+                            //Idk why we should break on this, I'll revisit
                             if (ExtractPubKey(txout.scriptPubKey, true, vchPubKey))
                                 break;
+
+                    //if the pubKey vector is empty, return false (should have some pub keys in there)
                     if (vchPubKey.empty())
                         return false;
 
+                    //SATOSHI_START
                     // Fill vout[1] to ourself
+                    //SATOSHI_END
+
+                    //Make a new script
                     CScript scriptPubKey;
+
+                    //Put in whatever is in vchPubKey and the checksig operation
                     scriptPubKey << vchPubKey << OP_CHECKSIG;
+
+                    //Add an output to ourselves of the difference between the value of the source transactions and the value we'd like to pay
                     wtxNew.vout.push_back(CTxOut(nValueIn - nValue, scriptPubKey));
                 }
 
+                //SATOSHI_START
                 // Fill vin
+                //SATOSHI_END
                 foreach (CWalletTx *pcoin, setCoins)
                     for (int nOut = 0; nOut < pcoin->vout.size(); nOut++)
                         if (pcoin->vout[nOut].IsMine())
                             wtxNew.vin.push_back(CTxIn(pcoin->GetHash(), nOut));
 
+                //SATOSHI_START
                 // Sign
+                //SATOSHI_END
+
+                //Initialize nIn to 0. this will represent the count of input into our new (current) transaction
                 int nIn = 0;
+
+                //For each wallet transaction in the set of coins being used to fund this transaction
                 foreach (CWalletTx *pcoin, setCoins)
+                    //for every output
                     for (int nOut = 0; nOut < pcoin->vout.size(); nOut++)
+                        //if the output is ours
                         if (pcoin->vout[nOut].IsMine())
+                            //sign this new transaction?
+                            //incrememnt nIn
                             SignSignature(*pcoin, wtxNew, nIn++);
 
+                //SATOSHI_START
                 // Check that enough fee is included
+                //SATOSHI_END
+                //Set nFee to the transaction's calculated fee if the fee is below that
                 if (nFee < wtxNew.GetMinFee(true))
                 {
                     nFee = nFeeRequiredRet = wtxNew.GetMinFee(true);
                     continue;
                 }
 
+                //SATOSHI_START
                 // Fill vtxPrev by copying from previous transactions vtxPrev
+                //SATOSHI_END
+                //Adds transactions from vin from CTransaction interface to vtxPrev in the dervied CtxWalletTx class
                 wtxNew.AddSupportingTransactions(txdb);
+                //time received *should* be the same as transaction
                 wtxNew.fTimeReceivedIsTxTime = true;
 
                 break;

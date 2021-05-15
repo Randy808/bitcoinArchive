@@ -3,10 +3,14 @@ How is mapAskFor populated?
 Is mapRelay exclusively used to store any data that's not a block but needs to get sent to other nodes?
 
 Where does the message made in RelayWalletTransaction get sent to other nodes?
-
 -In 'SendMessages' the inventory queued for sending on each node is checked and sent.
 
 What is the difference between setInventoryKnown and setInventoryKnown2?
+
+Does this client ask for blocks when it comes online or does it have to be done explicitly?
+-On connection, the sender and receiver (who makes the node in ThreadSocketHandler) both initialize a node which sends off a "version" message. Each node processes the version message by sending a "getblocks" message to each other.
+
+Can this client just ask for the blocks/transactions just relevant to a single address?
 
 
 -----
@@ -17,3 +21,6 @@ bitcoin/src/chain.h
 bitcoin/src/chain.cpp
 bitcoin/src/chainparams.cpp
 bitcoin/src/bitcoin-tx.cpp
+
+Long file to read through
+bitcoin/src/net.cpp

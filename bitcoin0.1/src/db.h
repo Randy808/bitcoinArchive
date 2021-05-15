@@ -2,6 +2,7 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file license.txt or http://www.opensource.org/licenses/mit-license.php.
 
+//Uses something called Berkely db
 #include <db_cxx.h>
 class CTransaction;
 class CTxIndex;
@@ -23,9 +24,11 @@ extern void DBFlush(bool fShutdown);
 
 
 
+//base class for all DBs
 class CDB
 {
 protected:
+    //Declare Berkely db
     Db* pdb;
     string strFile;
     vector<DbTxn*> vTxn;
@@ -39,31 +42,77 @@ private:
     void operator=(const CDB&);
 
 protected:
+
+    //Use key to locate item in db and read it into value
     template<typename K, typename T>
     bool Read(const K& key, T& value)
     {
+        //If Berkely db isn't defined
         if (!pdb)
+            //bail out
             return false;
 
+        //SATOSHI_START
         // Key
+        //SATOSHI_END
+
+        //Create a data stream with a type of SER_DISK
         CDataStream ssKey(SER_DISK);
+
+        //Rserve 1000 items in underlying char array
         ssKey.reserve(1000);
+
+        //Add key param to data stream
         ssKey << key;
+
+        //Dbt stands for "data base thang" lmao: https://docs.oracle.com/cd/E17275_01/html/api_reference/C/dbt.html
+        //Its a structure that can hold both a key and a value
+        //Create a Dbt using the key and the size of the key stream
         Dbt datKey(&ssKey[0], ssKey.size());
 
+        //SATOSHI_START
         // Read
+        //SATOSHI_END
+
+        //Create a dbt for the value
         Dbt datValue;
+
+        //Calls malloc(3) and stores the pointer in data field of dbt
         datValue.set_flags(DB_DBT_MALLOC);
+
+        //Calls 'get' on berkely db using transaction, the key the data was stored with, and the value
+        //'get' documentation: https://docs.oracle.com/database/bdb181/html/api_reference/CXX/frame_main.html
+        //GetTxn should return a transaction id originally generated from ' DbEnv::txn_begin() ; '
+        //Data should be read into datKey and datValue DBT values.
         int ret = pdb->get(GetTxn(), &datKey, &datValue, 0);
+
+        //CHECKPOINT
+
+        //This sets 'datKey.get_size()' bytes from the pointer 'datKey.get_data' to 0
+        //https://www.cplusplus.com/reference/cstring/memset/
+        //Clear out memory like satoshi comment says below
+        //Clear out memory taken up by key in db
         memset(datKey.get_data(), 0, datKey.get_size());
+
+        //if the pointer tp data is null return because we're about to read it and we couldn't find it
         if (datValue.get_data() == NULL)
             return false;
 
+        //SATOSHI_START
         // Unserialize value
+        //SATOSHI_END
+
+        //Load in datValue into stream by giving the beginning and end pointer
         CDataStream ssValue((char*)datValue.get_data(), (char*)datValue.get_data() + datValue.get_size(), SER_DISK);
+        
+        //pipe data into value
         ssValue >> value;
 
+        //SATOSHI_START
         // Clear and free memory
+        //SATOSHI_END
+
+        //Just as satoshi comment says above
         memset(datValue.get_data(), 0, datValue.get_size());
         free(datValue.get_data());
         return (ret == 0);
