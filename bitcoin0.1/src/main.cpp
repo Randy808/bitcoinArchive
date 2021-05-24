@@ -1980,7 +1980,7 @@ bool ProcessBlock(CNode *pfrom, CBlock *pblock)
         // Ask this guy to fill in what we're missing
         //S_E
 
-        //Have source transaction send a message?
+        //Request blocks from source node by sending it a "getblocks" message
         if (pfrom)
             pfrom->PushMessage("getblocks", CBlockLocator(pindexBest), GetOrphanRoot(pblock));
         return true;
@@ -2536,10 +2536,10 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         // Ask the first connected node for block updates
         //SATIOSHI_END
 
-        //bool representing whether blocks asked for? Idk
+        //bool representing whether blocks asked for. It's static so it is only modified once
         static bool fAskedForBlocks;
 
-        //If blocks weren't asked for (which should be the case in the first run-through) and if the node isn't a client?
+        //If blocks weren't asked for (which should be the case in the first run-through) and the node's fClient value isn't true (fClient indicates it's a light client)
         if (!fAskedForBlocks && !pfrom->fClient)
         {
             //Asked for blocks is true if didn't ask for blocks and the source node isn't a client?
@@ -2772,9 +2772,12 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
                 //If the inventory is NOT already in the known2 set
                 if (pfrom->setInventoryKnown2.insert(inv).second)
                 {
+                    //If its the first time this inventory is being added to set2, erase from set1 if present so we can add it back agai
+
                     //erase the inventory from the known inventory
                     pfrom->setInventoryKnown.erase(inv);
 
+                    //Add the inventoy to send to the vectoru inventory
                     //push the inventory to send
                     pfrom->vInventoryToSend.push_back(inv);
                 }
@@ -2801,7 +2804,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
         //Create the inventory as a transaction message
         CInv inv(MSG_TX, tx.GetHash());
 
-        //Add inventory to known in the receiving node
+        //Add inventory to known in the receiving node meaning we're leaving a marker on reference to sending node to let it know we received this inv
         pfrom->AddInventoryKnown(inv);
 
         //declare fMissingInputs to be populated by tx.AcceptTransaction
@@ -3006,6 +3009,7 @@ bool ProcessMessage(CNode *pfrom, string strCommand, CDataStream &vRecv)
 }
 
 //Look through what we have queued to send on other nodes and extract that into vInventoryToSend (populated in RelayWalletTransactions and similar functions). Then actually send the message to the other nodes. This method is run on node startup and runs within an endless loop.
+//Moves things from node's inventory into node's send buffer.
 bool SendMessages(CNode *pto)
 {
     //Check for shutdown
@@ -3427,10 +3431,10 @@ bool BitcoinMiner()
         //For endless while loop (that's how macro is defined)
         loop
         {
-            //Create 2 SHA256 blocks of blocks seen before
+            //Hash the tmp.block and put it into 'tmp.hash1'
             BlockSHA256(&tmp.block, nBlocks0, &tmp.hash1);
 
-            //Put nBlocks1 hash into &hash??
+            //Hash the recently computed 'tmp.hash1' and put it into 'hash'
             BlockSHA256(&tmp.hash1, nBlocks1, &hash);
 
             //Idk what it means for hash to be less than hashTarget but it makes sense if it's equal
@@ -3477,7 +3481,8 @@ bool BitcoinMiner()
             // Update nTime every few seconds
             //S_END
 
-            //if tmp block nonce masked with all 1s and a 0 equals 0
+            //if tmp block nonce masked with all 1s equals 0
+            //This condition is really saying keep looping as long as nonce isn't at its max value
             //This  part iterates the nonce
             if ((++tmp.block.nNonce & 0x3ffff) == 0)
             {
@@ -3854,7 +3859,7 @@ bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx &wtxNew, in
                 foreach (CWalletTx *pcoin, setCoins)
                     //for every output
                     for (int nOut = 0; nOut < pcoin->vout.size(); nOut++)
-                        //if the output is ours
+                        //if the output belongs to us (it has our public key on it)
                         if (pcoin->vout[nOut].IsMine())
                             //sign this new transaction?
                             //incrememnt nIn

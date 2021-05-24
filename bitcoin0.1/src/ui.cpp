@@ -1344,6 +1344,8 @@ void CSendDialog::OnButtonPaste(wxCommandEvent& event)
     }
 }
 
+//CHECKPOINT
+
 void CSendDialog::OnButtonSend(wxCommandEvent& event)
 {
     CWalletTx wtx;

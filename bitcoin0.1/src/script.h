@@ -463,8 +463,10 @@ public:
 
     CScript& operator<<(const CScript& b)
     {
+        //SATOSHI_START
         // I'm not sure if this should push the script or concatenate scripts.
         // If there's ever a use for pushing a script onto a script, delete this member fn
+        //SATOSHI_END
         assert(("warning: pushing a CScript onto a CScript with << is probably not intended, use + to concatenate", false));
         return (*this);
     }
@@ -479,73 +481,141 @@ public:
          return fRet;
     }
 
+    //Reads in the operation code which determines the size of sequential bytes that should get returned from the iterator 'pc' (which is returned in vchRet)
     bool GetOp(const_iterator& pc, opcodetype& opcodeRet, vector<unsigned char>& vchRet) const
     {
+        //Pre-initialize the return value to an invalid op_code that will be returned if no valid conditions match
         opcodeRet = OP_INVALIDOPCODE;
+
+        //clear the return array
         vchRet.clear();
+
+        //if the iterator given is equal to the end of what it's iterating
         if (pc >= end())
+            //bail out
             return false;
 
+        //SATOSHI_START
         // Read instruction
+        //SATOSHI_END
+
+        //read what's at the iterator and move the iterator forward in memory afterwards
         unsigned int opcode = *pc++;
+
+        //If the opcode that was read in is greater than or equal to the ending op code
         if (opcode >= OP_SINGLEBYTE_END)
         {
+            //And  if we're at the end of char array
             if (pc + 1 > end())
+                //return false
                 return false;
+
+            //Otherwise bit shift the opcode 8 times
             opcode <<= 8;
+
+            //And mask it with the next code before incrementing the iterator again 
             opcode |= *pc++;
         }
 
+        //SATOSHI_START
         // Immediate operand
+        //SATOSHI_END
+
+        //If the op code is less than the 4th op code for pushing data 
+        //So if the op code is a character
         if (opcode <= OP_PUSHDATA4)
         {
+            //Make an int equal to the value of opcode
             unsigned int nSize = opcode;
+
+            //If the op code is push data 1
             if (opcode == OP_PUSHDATA1)
             {
+                //And if the next thing to iterate is past the end
                 if (pc + 1 > end())
+                    //return
                     return false;
+                //Otherwise read in the size from the next opcode instead
                 nSize = *pc++;
             }
+            //if opcode is push data 2
             else if (opcode == OP_PUSHDATA2)
             {
+                //And if the next 2 things to iterate goes past the end
                 if (pc + 2 > end())
+                    //bail out
                     return false;
+
+                //set the size to 0
                 nSize = 0;
+                //Get the size from the current opcode instead which should only be 2 bytes (or 2 operations worth since chars are 1 byte)
                 memcpy(&nSize, &pc[0], 2);
+
+                //Move iterator past the 2 bytes that were read in
                 pc += 2;
             }
+            //If opcode IS psuh data 4
             else if (opcode == OP_PUSHDATA4)
             {
+                //Check we won't go past end of op code vec
                 if (pc + 4 > end())
+                    //return if we do
                     return false;
+
+                //copy 4 bytes into size
                 memcpy(&nSize, &pc[0], 4);
+                //Move iterator forward by 4
                 pc += 4;
             }
+
+            //If the size read in surpasses the unseen parts of the opcode buffer 
             if (pc + nSize > end())
+                //return
                 return false;
+            
+            //Otherwise assign the return char array to encompass the size that was read in
             vchRet.assign(pc, pc + nSize);
+
+            ///move the iterator forward by the size
             pc += nSize;
         }
 
+        //The opcode returned should be the opcode just read in
+        //Could also be an error op code if we had to return early
         opcodeRet = (opcodetype)opcode;
+
+        //return true
         return true;
     }
 
 
     void FindAndDelete(const CScript& b)
     {
+        //Create iterator at beginning of this script
         iterator pc = begin();
+
+        //Declare an opcode type
         opcodetype opcode;
+
+        //Make vector
         vector<unsigned char> vchPushValue;
+
+        //initialize a count
         int count = 0;
         do
         {
+            //While the space between the end of this script's vector and the iterator for this vector is big enough to compare with the size of b
+            //and 'b' has all of it's bytes starting from the beginnign equal to the the iterator of the current script
             while (end() - pc >= b.size() && memcmp(&pc[0], &b[0], b.size()) == 0)
             {
+                //Erase b.size() bytes from the current script
                 erase(pc, pc + b.size());
+                //Add to the count
                 count++;
             }
         }
+        //Keep doing this until no more op codes are found or there's not enough arguments to support an op code
+        //This moves 'pc' to beginning of next operation
         while (GetOp(pc, opcode, vchPushValue));
         //printf("FindAndDeleted deleted %d items\n", count); /// debug
     }

@@ -196,6 +196,7 @@ class CTxIn
 public:
     COutPoint prevout;
     CScript scriptSig;
+    //RANDY_COMMENT: a sequence number for input transactions that's initialized in the constructor. The default value is UINT_MAX
     unsigned int nSequence;
 
     CTxIn()
@@ -406,32 +407,54 @@ public:
         return true;
     }
 
+    //This returns true if the other transaction has a vin with a lower sequence number than all this transaction's vins
     bool IsNewerThan(const CTransaction& old) const
     {
+        //If the size of vin is not requal to the size of the 'vin' on the compared transaction, return false
         if (vin.size() != old.vin.size())
             return false;
+
+        //For every index in vin
         for (int i = 0; i < vin.size(); i++)
+            //if the prevout on the vins aren't the same, return false
             if (vin[i].prevout != old.vin[i].prevout)
                 return false;
 
+        //At this point, the vin of this transaction and the transaction being compared should be of the same size and aall vins should have the same prevouts at the same indices
+
+        //Initialize fNewer to false
         bool fNewer = false;
+
+        //Make th elowest equal to the max int
         unsigned int nLowest = UINT_MAX;
+
+        //For all vins
         for (int i = 0; i < vin.size(); i++)
         {
+            //if the sequence of one isn't equal to the sequence on the other
             if (vin[i].nSequence != old.vin[i].nSequence)
             {
+                //If nSequence on this transaction is lower than the lowest
                 if (vin[i].nSequence <= nLowest)
                 {
+                    //This sequence is older
                     fNewer = false;
+                    //set the new lowest
                     nLowest = vin[i].nSequence;
                 }
+
+                //If the other transaction has a vin with an older sequence than the lowest
                 if (old.vin[i].nSequence < nLowest)
                 {
+                    //than we'd be newer and set fNewer to true
                     fNewer = true;
+                    //The lowest can then be equal to the other transaction's vin
                     nLowest = old.vin[i].nSequence;
                 }
             }
         }
+
+        //return whatever fNewer is
         return fNewer;
     }
 

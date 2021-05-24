@@ -17,14 +17,19 @@ public:
 };
 
 
-
+//Just a wrapper for BN_CTX pointer that initializes and allocates the BN_CTX using open-ssl's  BN_CTX_new in its constructor.
 class CAutoBN_CTX
 {
 protected:
+    //A pointer to a BN_CTX (which is just an open-ssl-defined structure that holds big numbers)
+    //See more about BN_CTX here:  https://www.openssl.org/docs/man1.1.0/man3/BN_CTX_new.html
     BN_CTX* pctx;
+
+    //Defining the assignment operator for this class to change the internal BN_CTX pointer to whatever is assigned
     BN_CTX* operator=(BN_CTX* pnew) { return pctx = pnew; }
 
 public:
+    //Constructor that creates a new BN_CTX pointer (and associated object in memory) by using open-ssl's 'BN_CTX_new' function
     CAutoBN_CTX()
     {
         pctx = BN_CTX_new();
@@ -32,15 +37,19 @@ public:
             throw bignum_error("CAutoBN_CTX : BN_CTX_new() returned NULL");
     }
 
+    //Destructor frees the pointer to big number container BN_CTX
     ~CAutoBN_CTX()
     {
         if (pctx != NULL)
             BN_CTX_free(pctx);
     }
 
+    //Dereferencing operators and the like hat I don't feel like going through
     operator BN_CTX*() { return pctx; }
     BN_CTX& operator*() { return *pctx; }
     BN_CTX** operator&() { return &pctx; }
+
+    //Overload that kind of allows js-like checks for nullity
     bool operator!() { return (pctx == NULL); }
 };
 

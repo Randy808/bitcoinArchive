@@ -1,26 +1,68 @@
-How is mapAskFor populated?
+What is 'mapAskFor' and how is it populated?
+-Every node reference has a 'mapAskFor' property that represents the inventory hashes we got from the node associated with that reference, that don't exist in our own data stores ('mapTransactions', 'mapBlocks', etc). 'mapAskFor' is populated in main's 'ProcessMessage' function and happens when an 'inv' message needs to be processed. A vector of 'inv' is received from the data stream for that node and if there's an 'inv' in that vector we don't have (checked with 'AlreadyHave' function) we add it to our map of things to ask for.
+
+Where is the 'inv' command sent by a node?
+-'inv' messages get queued for sending in main's 'SendMessages'. It's sourced from a node reference's 'vInventoryToSend' property. 'vInventoryToSend' on a node reference is populated when responding to a 'getblocks' message in 'ProcessMessage' if one of the blocks requested from the message recipient wasn't found in the node reference's 'setInventoryKnown'. It also get's called whenever 'RelayMessage' gets called because the call chain of RelayMessage will cause an inventory to be added 'RelayMessage->RelayInventory->PushInventory'. 'RelayInventory' sends whatever is passed into it to all nodes. Mostly (almost exclusively) called from 'RelayWalletTransaction' (since it calls RelayMessage)
 
 Is mapRelay exclusively used to store any data that's not a block but needs to get sent to other nodes?
+-Yes, mapRelay stores transactions that it sends to other nodes and transactions generated on the current node. It gets used whenever the current node calls RelayMessage which is when it receives transaction messages (since it needs to rebroadcast), review messages, or has transactions processed on itself (the current instance is used as a wallet to send money).
 
 Where does the message made in RelayWalletTransaction get sent to other nodes?
--In 'SendMessages' the inventory queued for sending on each node is checked and sent.
+-In 'SendMessages' the inventory queued for sending on each node is added to the vSend CStream buffer. The data is actually sent over the network in the net.cpp's 'ThreadSocketHandler2'.
 
-What is the difference between setInventoryKnown and setInventoryKnown2?
+What is the difference between setInventoryKnown and setInventoryKnown2 on a node?
+If inventory is in setInventoryKnown2, that means it was rquested with 'getBlocks'. Inventory is removed from setInventoryKnown (given its present) if subsequently added to setInventoryKnown2. The inventory inserted into setInventoryKnown is also unconditionally added to vInventoryToSend.
 
 Does this client ask for blocks when it comes online or does it have to be done explicitly?
--On connection, the sender and receiver (who makes the node in ThreadSocketHandler) both initialize a node which sends off a "version" message. Each node processes the version message by sending a "getblocks" message to each other.
+-On connection, the sender and receiver (who makes the node in ThreadSocketHandler) both initialize a node reference to each other (sender in 'FindNode' and receiver in 'ThreadSocketHandler2'), which sends off a "version" message. Each node processes the version message, and if it's their first time being discovered, they send a "getblocks" message to the "version" message sender.
 
 Can this client just ask for the blocks/transactions just relevant to a single address?
+-It doesn't look to have that capability. Also, I see no way of requesting individual transactions or even a place in the code where updates for general transactions are sent (although code does exist to process messages of type "tx"). This client can also give parts of the blockchain up to a certain height.
 
+-Where is the blockheight stored/updated?
+
+What does 'OP_CODESEPARATOR' do?
+-It's used in 'VerifySignature' to separate the signature and the public key in the script to run.
+
+What is nSequence on a transaction?
+-It's not really used widely in this version of bitcoin, but it seems to be involved in dating transactions
+
+-Where does 'scriptPubKey' in CreateTransaction come from?
+
+What kind of validations are done when a new block is received in inventory?
+
+What's the difference between 'VerifySignature' and 'CheckSig'?
+'CheckSig' is an operation that's detailed in the script signature that 'VerifySignature' checks
+
+What is scriptPubKey?
+-When 'sendMoney' is called from the UI, it's passed '<< OP_DUP << OP_HASH160 << hash160 << OP_EQUALVERIFY << OP_CHECKSIG;' as it's scriptPubKey where hash160 is the hashed address
+
+How does the signature process work?
+A scriptPubKey is created based on the destination of a new transaction. The new transaction takes that public key and places it in the ctxout. For the inputs that will be funding the new transaction, using the 'SignatureHash' function they'll each copy the current transaction, clear out the signature for other inputs for the transaction except for itself (putting it's public key in the signature slot for that input), and hash the transaction copy. 'Solver' will then sign the hash (appending the public key to the hash if it's not a coinbase) and put it into the current transaction vin's scriptSig. To verify the signature for that input, the current transaction's input signature is given to 'EvalScript' along with the input transaction's output public key script separated by the OP_CODESEPARATOR.
+
+
+------
+
+-SignSignature is only used in one place -- when creating the transaction. The 'SignatureHash' function is only used in 'SignSignature' and 'CheckSig'
+
+-Pub key script made on transaction here:  CSendDialog::OnButtonSend
+
+--isMine->Solver->GetOp
+--Find coinbase transactions to see how pubKey is populated?
+-Difference between scriptPubKey and scriptSig
+
+-Every transaction has an output
 
 -----
 *Quick files to read through in modern bitcoin source*
 Commit: 7cb0bcb6811070786937fb5cc0af82cf4ef21ff0
+src/script/standard.cpp
 bitcoin/src/qt/walletcontroller.cpp
 bitcoin/src/chain.h
 bitcoin/src/chain.cpp
 bitcoin/src/chainparams.cpp
 bitcoin/src/bitcoin-tx.cpp
+bitcoin/src/script/script.cpp
 
 Long file to read through
 bitcoin/src/net.cpp
