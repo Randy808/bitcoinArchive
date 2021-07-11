@@ -578,14 +578,16 @@ bool CTransaction::AcceptTransaction(CTxDB &txdb, bool fCheckInputs, bool *pfMis
         //What is 'mapNextTx'?
         //Seems to be a map from a source transaction output to current transaction. Only place I see this is populated is in 'AddToMemoryPool' which I believe should only get called from here.
         //Check if the metadata to source transaction output is present in 'mapNextTx'
+        //Looks like this is the check to see if the input has already been  spent
         if (mapNextTx.count(outpoint))
         {
             //SATOSHI_START
             // Allow replacing with a newer version of the same transaction
             //SATOSHI_END
             //Why does i have to be zero to continue?
-            //If this has an input that has been put in mapNextTx, then it may mean this is being processed again. The case of i=0 is okay because...idk
-            //Maybe there is signigicance in first index of vin? Satoshi comment talks about 'replacing'
+            //If this has an input that has been put in mapNextTx, then it may mean this source transaction is being processed again.
+
+            //If 'i' isn't 0 when meeting this condition, then that means the first iteration returned true on the above 'if (mapNextTx.count(outpoint))' condition and didn't manage to break or it, OR it didn't catch at all. Either way, the logic below is looking to see if all inputs hit a certain condtion so if the first one didn't break the loop then the first condition didn't hit all the conditions below.
             if (i != 0)
                 return false;
 
@@ -606,7 +608,7 @@ bool CTransaction::AcceptTransaction(CTxDB &txdb, bool fCheckInputs, bool *pfMis
 
                 //if it's NOT in mapNextTx or it's not equal to transaction found in mapNextOld where 'i' was 0
 
-                //Alternatively, if there's a source transaction's output not in mapNextTx, return false. In which case would ptxOld not have been retrieved from a vin reference that wasn't in mapNextTx?
+                //If the other source transactions haven't been spent or all the source transactions and haven't been spent on the same existing (old) transaction, return false
                 if (!mapNextTx.count(outpoint) || mapNextTx[outpoint].ptx != ptxOld)
                     return false;
             }
@@ -953,22 +955,27 @@ uint256 GetOrphanRoot(const CBlock *pblock)
     return pblock->GetHash();
 }
 
+//This method is used to calculate the coinbase transaction's value
 //Add on subsidy onto parameter fees
 int64 CBlock::GetBlockValue(int64 nFees) const
 {
     //subsidy is 50 coins?
+    //A 'COIN' here represents BITCOIN and is equal to 100000000 (100 mil).
+    //A 'CENT' is 1000000 (1 mil)
+    //The value of '1' (which *can* be transferred using this blockchain) is colloquially referred to as a 'satoshi' nowadays.
     int64 nSubsidy = 50 * COIN;
 
     //SATOSHI_START
     // Subsidy is cut in half every 4 years
     //SATOSHI_END
     //Not sure what 210000 is, especially in the context of nBestHeight
+    //The 'nBestHeight' is a representation of how much time has passed since blocks are mined at a steady rate. '210000' should represent the number of blocks mined every 4 years
     nSubsidy >>= (nBestHeight / 210000);
 
     return nSubsidy + nFees;
 }
 
-//caclulates the time between pindexFirst and pindexLast, and calculates bnNew which is nActualTimespan/nTargetTimespan after the 'setCompact' is called on it using pindexLast. Also enforce bNew has to have a cap of bnProofOfWorkLimit
+//Returns the difficulty required for the next block to be mined. It only re-evaluates every 'nInterval' of blocks and the difficulty change is scaled on the proportion of time it took to mine nInterval blocks over the desired target timespan of 2 weeks
 unsigned int GetNextWorkRequired(const CBlockIndex *pindexLast)
 {
 
@@ -982,7 +989,9 @@ unsigned int GetNextWorkRequired(const CBlockIndex *pindexLast)
 
     //nInterval comes out to the value 2016. This is how many blocks satoshi would like mined within a 2 week interval which should be about a block every 10 minutes
     //desiredTimespan/blocksMined = targetSpacing 
-    //Where blocksMined = nInterval
+        //Where desiredTimespan = nTargetTimespan, 
+        //blocksMined = nInterval
+        // and targetSpacing = nTargetSpacing
     const unsigned int nInterval = nTargetTimespan / nTargetSpacing;
 
     //SATOSHI_START
@@ -1808,7 +1817,7 @@ bool CBlock::CheckBlock() const
     // Check timestamp
     //S_E
 
-    //If the time of the block is oo far in the future (2 hrs)
+    //If the time of the block is too far in the future (2 hrs)
     if (nTime > GetAdjustedTime() + 2 * 60 * 60)
         //reject it
         return error("CheckBlock() : block timestamp too far in the future");
@@ -1917,7 +1926,6 @@ bool CBlock::AcceptBlock()
         //error out
         return error("AcceptBlock() : WriteToDisk failed");
 
-    //If the block index wasn't able to get added using File and BlockPos
     //AddToBlockIndex is defined in CBlock
     if (!AddToBlockIndex(nFile, nBlockPos))
         //Error out
@@ -1945,7 +1953,7 @@ bool ProcessBlock(CNode *pfrom, CBlock *pblock)
     // Check for duplicate
     //S_E
 
-    //Satoshi comment sufficient. Error out if the hash of this block can be found in block storages
+    //Satoshi comment sufficient. Error out if the hash of this block can be found in block storages since that means we already have it and don't need to process it
     uint256 hash = pblock->GetHash();
     if (mapBlockIndex.count(hash))
         return error("ProcessBlock() : already have block %d %s", mapBlockIndex[hash]->nHeight, hash.ToString().substr(0, 14).c_str());
@@ -1967,7 +1975,7 @@ bool ProcessBlock(CNode *pfrom, CBlock *pblock)
     // If don't already have its previous block, shunt it off to holding area until we get it
     //S_E
 
-    //Check previous block is in local storage
+    //if the previous block isn't in our block index map, orphan the block
     if (!mapBlockIndex.count(pblock->hashPrevBlock))
     {
 
@@ -2074,36 +2082,61 @@ bool ScanMessageStart(Stream &s)
     }
 }
 
+//Creates a folder to hold bitcoin data in a directory specified by arguments
 string GetAppDir()
 {
+    //Create an empty string
     string strDir;
+
+    //If 'strSetDataDir' is set form UI
     if (!strSetDataDir.empty())
     {
+        //Set strDir to 'strSetDataDir' in argument to bitcoin app
         strDir = strSetDataDir;
     }
+    //If the environment  var APPDATA is defined
     else if (getenv("APPDATA"))
     {
+        //Set the directory to env var directory's 'Bitcoin' folder
         strDir = strprintf("%s\\Bitcoin", getenv("APPDATA"));
     }
+    //if user profile is defined
     else if (getenv("USERPROFILE"))
     {
+         //Set the directory to user directory's 'Application Data' folder
         string strAppData = strprintf("%s\\Application Data", getenv("USERPROFILE"));
+
+        //declare bool to indicate whether directory was made yet
         static bool fMkdirDone;
+        //If the directory hasn not been made yet
         if (!fMkdirDone)
         {
+            //set static var to true to say directory was made
             fMkdirDone = true;
+
+            //Create the directory
             _mkdir(strAppData.c_str());
         }
+
+        //Make the directory have a Bitcoin folder in it by updating strDir
         strDir = strprintf("%s\\Bitcoin", strAppData.c_str());
     }
     else
     {
+        //use current directory if no options are set
         return ".";
     }
+
+    //Indicate whether directory has been made
     static bool fMkdirDone;
+
+    //if the directory has not been made
     if (!fMkdirDone)
     {
+        //set this to true
         fMkdirDone = true;
+
+        //make the bitcoin folder
         _mkdir(strDir.c_str());
     }
     return strDir;
@@ -3106,7 +3139,7 @@ bool SendMessages(CNode *pto)
         //initialize transaction db
         CTxDB txdb("r");
 
-        //While thr recipient reference still has things in its mapAskFor, and the things in the map are timestamped in the past
+        //While thr recipient reference still has things in its mapAskFor, and the things in the map are timestamped in the past -- this loop will delete everything we already have from mapAskFor
         while (!pto->mapAskFor.empty() && (*pto->mapAskFor.begin()).first <= nNow)
         {
             //Get the inventory element
@@ -3206,8 +3239,7 @@ bool BitcoinMiner()
         //What is CheckForShutdown?
         CheckForShutdown(3);
 
-        //What is vNodes?
-        //If it's empty
+        //If vNodes (the references to the neighboring nodes we're connected to) is empty
         while (vNodes.empty())
         {
             //sleep for 1 second and check for shutdown
@@ -3215,7 +3247,7 @@ bool BitcoinMiner()
             CheckForShutdown(3);
         }
 
-        //Get when the transaction was last updated
+        //Get when the transactions were last updated
         unsigned int nTransactionsUpdatedLast = nTransactionsUpdated;
 
         //Get the block pointer to pindexBest (newest block?)
@@ -3239,7 +3271,7 @@ bool BitcoinMiner()
         //Set the reference transaction to null (making coinbase)
         txNew.vin[0].prevout.SetNull();
 
-        //put mix nonce, nBits, and script somehow?
+        //Use stream operator to append nBits and the nonce to the script
         txNew.vin[0].scriptSig << nBits << ++bnExtraNonce;
 
         //Resize the output transaction to 1 (just payout, no refund)
@@ -3275,7 +3307,6 @@ bool BitcoinMiner()
         int64 nFees = 0;
 
         //Lock cs_main and mapTransactions
-        //What is 'locking cs_main'?
         CRITICAL_BLOCK(cs_main)
         CRITICAL_BLOCK(cs_mapTransactions)
         {
@@ -3288,7 +3319,7 @@ bool BitcoinMiner()
             //make a vector to check if 'vf' already added? Same size as transactions
             vector<char> vfAlreadyAdded(mapTransactions.size());
 
-            //Looks like 'fFoundSomething' is loop control that initializes to true. Wonder if there's disdain for do-while by the devs of this code base?
+            //Looks like 'fFoundSomething' is loop control that initializes to true
             bool fFoundSomething = true;
 
             //make block size 0
@@ -3355,7 +3386,6 @@ bool BitcoinMiner()
                 }
             }
         }
-        //This next part happens whether foundSOmething is true or false
 
         //what is nbits?
         //I think the difficulty
@@ -3447,7 +3477,6 @@ bool BitcoinMiner()
                 //if it is, make the new block equal the tmp block nonce
                 pblock->nNonce = tmp.block.nNonce;
 
-                //If proof of work is met?
                 //The tmp block seems to be used as the working block needed to test the nonce
                 assert(hash == pblock->GetHash());
 
@@ -3481,9 +3510,10 @@ bool BitcoinMiner()
             // Update nTime every few seconds
             //S_END
 
-            //if tmp block nonce masked with all 1s equals 0
-            //This condition is really saying keep looping as long as nonce isn't at its max value
-            //This  part iterates the nonce
+            //if tmp block nonce masked with all 1s equals 0...
+            //This condition unconditionally increments the nonce in the check.
+            //The case where the condition is true means we've searched a good amount of nonce values
+            //When last 18 bits are reset? (since nonce starts at 1)
             if ((++tmp.block.nNonce & 0x3ffff) == 0)
             {
                 //try to shutdown?
@@ -3507,6 +3537,8 @@ bool BitcoinMiner()
                     //break
                     break;
 
+                //This is an attempt to change an arbitrary value in the block (the time) in an effort to generate
+                //new hash values. This is sometimes colloquially called the 'extraNonce'
                 //The time of the block is equal to MediantTimePast or adjusted time
                 tmp.block.nTime = pblock->nTime = max(pindexPrev->GetMedianTimePast() + 1, GetAdjustedTime());
             }

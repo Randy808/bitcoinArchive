@@ -44,7 +44,7 @@ enum
 };
 
 
-//'Statements' is usually a sequence of READWRITE macro calls
+//The 'statements' parameter is usually a sequence of READWRITE macro calls
 //CHECKPOINT
 #define IMPLEMENT_SERIALIZE(statements)    \
     unsigned int GetSerializeSize(int nType=0, int nVersion=VERSION) const  \
@@ -81,6 +81,7 @@ enum
         {statements}                            \
     }
 
+//Add to nSerSize (presumably taken from local symbol table from whichever method it's used in) the result of 'SerReadWrie' using the local stream s and all the other metadata like nVersion, etc.
 #define READWRITE(obj)      (nSerSize += ::SerReadWrite(s, (obj), nType, nVersion, ser_action))
 
 
@@ -88,9 +89,12 @@ enum
 
 
 
+//SATOSHI_START
 //
 // Basic types
 //
+//SATOSHI_END
+//Calls 'write' on the stream 's' to write 'obj' to internal structure
 #define WRITEDATA(s, obj)   s.write((char*)&(obj), sizeof(obj))
 #define READDATA(s, obj)    s.read((char*)&(obj), sizeof(obj))
 
@@ -160,14 +164,20 @@ inline unsigned int GetSizeOfCompactSize(uint64 nSize)
     else                         return sizeof(unsigned char) + sizeof(uint64);
 }
 
+//Writes the size given in parameter to stream
 template<typename Stream>
 void WriteCompactSize(Stream& os, uint64 nSize)
 {
+    //If the size of whatever is being written is less than the max val of unsigned char
     if (nSize < UCHAR_MAX-2)
     {
+        //Receive the size into an unsignedChar
         unsigned char chSize = nSize;
+
+        //Call writeData on the stream, writing size 
         WRITEDATA(os, chSize);
     }
+
     else if (nSize <= USHRT_MAX)
     {
         unsigned char chSize = UCHAR_MAX-2;
@@ -175,11 +185,20 @@ void WriteCompactSize(Stream& os, uint64 nSize)
         WRITEDATA(os, chSize);
         WRITEDATA(os, xSize);
     }
+
+    //If the size of data to write is less than an unisgned int (but bigger than unsigned char and short)
     else if (nSize <= UINT_MAX)
     {
+        //Get the size of the max unsigned char
         unsigned char chSize = UCHAR_MAX-1;
+
+        //Capture size in xSize
         unsigned int xSize = nSize;
+
+        //Write the data saying takes up unsigned char
         WRITEDATA(os, chSize);
+
+        //Write data size the data should actually take up
         WRITEDATA(os, xSize);
     }
     else
@@ -345,12 +364,14 @@ template<typename Stream, typename K, typename Pred, typename A> void Unserializ
 
 
 
+//SATOSHI_START
 //
 // If none of the specialized versions above matched, default to calling member function.
 // "int nType" is changed to "long nType" to keep from getting an ambiguous overload error.
 // The compiler will only cast int to long if none of the other templates matched.
 // Thanks to Boost serialization for this idea.
 //
+//SATOSHI_END
 template<typename T>
 inline unsigned int GetSerializeSize(const T& a, long nType, int nVersion=VERSION)
 {
@@ -360,6 +381,8 @@ inline unsigned int GetSerializeSize(const T& a, long nType, int nVersion=VERSIO
 template<typename Stream, typename T>
 inline void Serialize(Stream& os, const T& a, long nType, int nVersion=VERSION)
 {
+    //Calls serialize on type T which should contain the macro 'IMPLEMENT_SERIALIZE'.
+    //'IMPLEMENT_SERIALIZE' should implement 'Serialize' using READWRITE statements it passes into 'IMPLEMENT_SERIALIZE'
     a.Serialize(os, (int)nType, nVersion);
 }
 
@@ -595,10 +618,14 @@ unsigned int GetSerializeSize(const std::set<K, Pred, A>& m, int nType, int nVer
     return nSize;
 }
 
+//The serialize method when the data being serialized, 'm', is a set
 template<typename Stream, typename K, typename Pred, typename A>
 void Serialize(Stream& os, const std::set<K, Pred, A>& m, int nType, int nVersion)
 {
+    //Write the size of the data 'm' to a stream
     WriteCompactSize(os, m.size());
+
+    //For all the items in the set
     for (typename std::set<K, Pred, A>::const_iterator it = m.begin(); it != m.end(); ++it)
         Serialize(os, (*it), nType, nVersion);
 }
@@ -635,6 +662,7 @@ inline unsigned int SerReadWrite(Stream& s, const T& obj, int nType, int nVersio
 template<typename Stream, typename T>
 inline unsigned int SerReadWrite(Stream& s, const T& obj, int nType, int nVersion, CSerActionSerialize ser_action)
 {
+    //Calls serialize from global namespace
     ::Serialize(s, obj, nType, nVersion);
     return 0;
 }
@@ -699,15 +727,28 @@ struct secure_allocator : public std::allocator<T>
 class CDataStream
 {
 protected:
+    //vector_type is itself a vector of char and the allocator for when the underlying vector needs to be resized uses 'secure_allocator'
     typedef vector<char, secure_allocator<char> > vector_type;
+    
+    //Set a vector type called 'vch'
     vector_type vch;
+
+    //An int representing the read position
     unsigned int nReadPos;
+
+    //short int representing state
     short state;
+
+    //short int representing mask
     short exceptmask;
 public:
+    //Type of serialization
     int nType;
+
+    //Version of serialization
     int nVersion;
 
+    //removing namespacing from the following types:
     typedef vector_type::allocator_type   allocator_type;
     typedef vector_type::size_type        size_type;
     typedef vector_type::difference_type  difference_type;
@@ -718,22 +759,27 @@ public:
     typedef vector_type::const_iterator   const_iterator;
     typedef vector_type::reverse_iterator reverse_iterator;
 
+    //Constructor that just calls Init
     explicit CDataStream(int nTypeIn=0, int nVersionIn=VERSION)
     {
         Init(nTypeIn, nVersionIn);
     }
 
+    //Consructor that does something to char vector vch and calls init
     CDataStream(const_iterator pbegin, const_iterator pend, int nTypeIn=0, int nVersionIn=VERSION) : vch(pbegin, pend)
     {
         Init(nTypeIn, nVersionIn);
     }
 
+//Can't use const_iteraor depending on _MSC_VER?
+//What is MSC_VER?
 #if !defined(_MSC_VER) || _MSC_VER >= 1300
     CDataStream(const char* pbegin, const char* pend, int nTypeIn=0, int nVersionIn=VERSION) : vch(pbegin, pend)
     {
         Init(nTypeIn, nVersionIn);
     }
 #endif
+
 
     CDataStream(const vector_type& vchIn, int nTypeIn=0, int nVersionIn=VERSION) : vch(vchIn.begin(), vchIn.end())
     {
@@ -750,6 +796,7 @@ public:
         Init(nTypeIn, nVersionIn);
     }
 
+    //Initializes the version and the type
     void Init(int nTypeIn=0, int nVersionIn=VERSION)
     {
         nReadPos = 0;
@@ -759,12 +806,14 @@ public:
         exceptmask = ios::badbit | ios::failbit;
     }
 
+    //Adds data stream b's internal character array (starting from b's readPos) to internal character array of this instance
     CDataStream& operator+=(const CDataStream& b)
     {
         vch.insert(vch.end(), b.begin(), b.end());
         return *this;
     }
 
+    //Makes a copy of a , performs an append of b onto it's internal array, and returns the copy of this instance ('a')
     friend CDataStream operator+(const CDataStream& a, const CDataStream& b)
     {
         CDataStream ret = a;
@@ -778,9 +827,12 @@ public:
     }
 
 
+    //This is pretty much defining all methods that would be on a vector interface
+    //SATOSHI_START
     //
     // Vector subset
     //
+    //SATOSHI_END
     const_iterator begin() const                     { return vch.begin() + nReadPos; }
     iterator begin()                                 { return vch.begin() + nReadPos; }
     const_iterator end() const                       { return vch.end(); }
@@ -962,7 +1014,9 @@ public:
     template<typename T>
     CDataStream& operator<<(const T& obj)
     {
+        //SATOSHI_START
         // Serialize to this stream
+        //SATOSHI_END
         ::Serialize(*this, obj, nType, nVersion);
         return (*this);
     }

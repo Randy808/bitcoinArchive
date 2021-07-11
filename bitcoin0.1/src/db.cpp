@@ -40,24 +40,39 @@ instance_of_cdbinit;
 
 CDB::CDB(const char* pszFile, const char* pszMode, bool fTxn) : pdb(NULL)
 {
+    //Make an int called ret
     int ret;
+
+    //if the string for pszFile is null, return
     if (pszFile == NULL)
         return;
 
+    //fCreate returns an index where 'c' occurs in  pszMode. Since it's cast as a bool, if 'c' is not present, fCreate is false.
     bool fCreate = strchr(pszMode, 'c');
+
+    //If there's no '+' or 'w' in the pszMode, then fReadOnly is false
     bool fReadOnly = (!strchr(pszMode, '+') && !strchr(pszMode, 'w'));
+
+    //Create a flag equal to DB_THREAD (although I can't find where DB_THREAD is defined; probably from Berkely DB)
     unsigned int nFlags = DB_THREAD;
+
+    //If fCreate is defined (there's a 'c' in pszMode)
     if (fCreate)
+        //Bit-or with DB_CREATE
         nFlags |= DB_CREATE;
     else if (fReadOnly)
+        //If it's read-only, bit-or with DB_RDONLY
         nFlags |= DB_RDONLY;
     if (!fReadOnly || fTxn)
+        //If it's not read only, bit-or with DB_AUTO_COMMIT
         nFlags |= DB_AUTO_COMMIT;
 
     CRITICAL_BLOCK(cs_db)
     {
+        //If DBEnvInit is false (I'm assuming this  just means the constructor hasn't been run through)
         if (!fDbEnvInit)
         {
+            //
             string strAppDir = GetAppDir();
             string strLogDir = strAppDir + "\\database";
             _mkdir(strLogDir.c_str());
@@ -321,6 +336,7 @@ CBlockIndex* InsertBlockIndex(uint256 hash)
     return pindexNew;
 }
 
+//TODO:
 bool CTxDB::LoadBlockIndex()
 {
     // Get cursor

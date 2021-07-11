@@ -11,15 +11,16 @@ Where does the message made in RelayWalletTransaction get sent to other nodes?
 -In 'SendMessages' the inventory queued for sending on each node is added to the vSend CStream buffer. The data is actually sent over the network in the net.cpp's 'ThreadSocketHandler2'.
 
 What is the difference between setInventoryKnown and setInventoryKnown2 on a node?
-If inventory is in setInventoryKnown2, that means it was rquested with 'getBlocks'. Inventory is removed from setInventoryKnown (given its present) if subsequently added to setInventoryKnown2. The inventory inserted into setInventoryKnown is also unconditionally added to vInventoryToSend.
+If inventory is in setInventoryKnown2, that means it was rquested with 'getBlocks'. Inventory is removed from setInventoryKnown (given its not-null) if subsequently added to setInventoryKnown2. The inventory inserted into setInventoryKnown is also unconditionally added to vInventoryToSend.
 
 Does this client ask for blocks when it comes online or does it have to be done explicitly?
 -On connection, the sender and receiver (who makes the node in ThreadSocketHandler) both initialize a node reference to each other (sender in 'FindNode' and receiver in 'ThreadSocketHandler2'), which sends off a "version" message. Each node processes the version message, and if it's their first time being discovered, they send a "getblocks" message to the "version" message sender.
 
 Can this client just ask for the blocks/transactions just relevant to a single address?
--It doesn't look to have that capability. Also, I see no way of requesting individual transactions or even a place in the code where updates for general transactions are sent (although code does exist to process messages of type "tx"). This client can also give parts of the blockchain up to a certain height.
+-It doesn't look to have that capability. Also, I see no way of requesting individual transactions or even a place in the code where updates for general transactions are sent (although code does exist to process messages of type "tx"). This client can give segments of the blockchain up to a certain height though.
 
 -Where is the blockheight stored/updated?
+The current best block height 'nBestHeight' is stored as a global variable and is updated in AddToBlockIndex
 
 What does 'OP_CODESEPARATOR' do?
 -It's used in 'VerifySignature' to separate the signature and the public key in the script to run.
@@ -28,8 +29,10 @@ What is nSequence on a transaction?
 -It's not really used widely in this version of bitcoin, but it seems to be involved in dating transactions
 
 -Where does 'scriptPubKey' in CreateTransaction come from?
+it's generated in ui.cpp's 'void CSendDialog::OnButtonSend(wxCommandEvent& event)' method. It gets propagated to 'CreateTransaction' using the 'SendMoney' method.
 
 What kind of validations are done when a new block is received in inventory?
+See 'ProcessBlock' in main.cpp. Validations include making sure the time on it isn't too far in the future, and that the block hasn't been previously received
 
 What's the difference between 'VerifySignature' and 'CheckSig'?
 'CheckSig' is an operation that's detailed in the script signature that 'VerifySignature' checks
@@ -38,10 +41,36 @@ What is scriptPubKey?
 -When 'sendMoney' is called from the UI, it's passed '<< OP_DUP << OP_HASH160 << hash160 << OP_EQUALVERIFY << OP_CHECKSIG;' as it's scriptPubKey where hash160 is the hashed address
 
 How does the signature process work?
-A scriptPubKey is created based on the destination of a new transaction. The new transaction takes that public key and places it in the ctxout. For the inputs that will be funding the new transaction, using the 'SignatureHash' function they'll each copy the current transaction, clear out the signature for other inputs for the transaction except for itself (putting it's public key in the signature slot for that input), and hash the transaction copy. 'Solver' will then sign the hash (appending the public key to the hash if it's not a coinbase) and put it into the current transaction vin's scriptSig. To verify the signature for that input, the current transaction's input signature is given to 'EvalScript' along with the input transaction's output public key script separated by the OP_CODESEPARATOR.
+A scriptPubKey is created based on the destination of a new transaction. The transaction being created takes that public key and places it in the cTxOut. The new transaction will get run through by 'SignatureHash' in a loop for each index of the input transactions (where the index will also get passed in). in the SignatureHash function, the new transaction will get cloned, clear out the signature for other inputs for the transaction except for the one who's index was put in the param (putting it's public key in the signature slot for that input), and hash the transaction copy. 'Solver' will then sign the hash (appending the public key to the hash if it's not a coinbase) and put it into the current transaction vin's scriptSig. To verify the signature for that input, the current transaction's input signature is given to 'EvalScript' along with the input transaction's output public key script separated by the OP_CODESEPARATOR.
+
+-What is actually relayed to other nodes, block and transaction hashes? Are the blocks and transactions only viewable in-full on request?
+
+-How and where are transactions of a newly received block verified? What type of verification does the coinbase transaction go through?
+
+-Where is an address's balance verified to prevent someone from spending more oney than they have?
+Logic is NOT in 'CheckBlock's 'CheckTransaction'. Balances aren't checked exactly, just that a transactions previous transactions are valid  and that inputs dont add up to more than output. both done in main.cpp's 'CTransaction::ClientConnectInputs'. 'CTransaction::ConnectInputs' does something similar but it's done in a miner intiated context and in 'ConnectBlock' which was presumably only done in Reorganize. It is checked in the call chain for 'ConnectBlock' from 'AddToBlockIndex' in main.cpp here: 'if (pindexNew->nHeight > nBestHeight)'
+
+
+How many bitcoin is received by a coinbase transaction?
+It's 50 bitcoins divided by 2 ^(every 4 year period that has passed). This is calculated by int64 CBlock::GetBlockValue(int64 nFees)
+
 
 
 ------
+The process for a node is getting data from the code section in main.cpp's ProcessMessages where 'srtMessage == "inv"', and adding that inv to mapAskFor. 
+
+Then, in main.cpp's 'SendMessages', the mapAskFor map is sent in a 'getdata' request to the node in the parameter. 
+
+The receiving node will process the 'getdata' message in main.cpp's ProcessMessages where 'strCommand == "getdata"' and, if one of the inventory requested is a block, will send a 'block' message with the 'CBlock' data matching that hash
+
+The node who just requested data will get back a 'block' message that will be processed in main.cpp's ProcessMessages where 'strCommand == "block"' and will put that inventory in ProcessBlock. ProcessBlock will do some block validations and pass invoke the CBlock's AcceptBlock method. 'AcceptBlock' will call 'WriteToDisk' which will get it 'nFile' and 'nBlockPos' which it passes in to the method 'AddToBlockIndex' to help calculate whether the height of that block is the best (since I guess the program can maintain competing chains). Th nBestHeight modified is global.
+
+Where in the code is the check to make sure a transaction isn't double spent? Does it use mapNextTx?
+Yes, see CTransaction::AcceptTransaction 'if (mapNextTx.count(outpoint))'
+
+What commands are sent to discover new nodes?
+
+---
 
 -SignSignature is only used in one place -- when creating the transaction. The 'SignatureHash' function is only used in 'SignSignature' and 'CheckSig'
 
@@ -50,6 +79,7 @@ A scriptPubKey is created based on the destination of a new transaction. The new
 --isMine->Solver->GetOp
 --Find coinbase transactions to see how pubKey is populated?
 -Difference between scriptPubKey and scriptSig
+    -One is a challenge that goes on an transaction output, the other is a solution that goes on transaction input
 
 -Every transaction has an output
 

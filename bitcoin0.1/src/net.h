@@ -549,20 +549,40 @@ public:
                 vInventoryToSend.push_back(inv);
     }
 
+    //Adds the inv to mapAskFor with the current time. If it was already asked for in the past and it's been less than 2 minutes since it was asked for, inv will go into mapAskFor with a scheduled request time 2 min past when it was asked for last
     void AskFor(const CInv& inv)
     {
+        //SATOSHI_START
         // We're using mapAskFor as a priority queue,
         // the key is the earliest time the request can be sent
+        //SATOSHI_END
+
+        //Get the request time for the inventory if present in mapAlreadyAskedFor.
+        //This initializes a value of '0' for 'inv' if not found in the map
         int64& nRequestTime = mapAlreadyAskedFor[inv];
         printf("askfor %s  %I64d\n", inv.ToString().c_str(), nRequestTime);
 
+        //SATOSHI_START
         // Make sure not to reuse time indexes to keep things in the same order
+        //SATOSHI_END
+
+        //Get the current time in nanoseconds (for some reason)
         int64 nNow = (GetTime() - 1) * 1000000;
+
+        //Initialize a static var representing the last time something was asked for
         static int64 nLastTime;
+
+        //Set the nLastTime to either now, or last time incremented by 1
         nLastTime = nNow = max(nNow, ++nLastTime);
 
+        //SATOSHI_START
         // Each retry is 2 minutes after the last
+        //SATOSHI_END
+
+        //The request time is the same as the last nRequestTime plus 2 min, or now (in nanoseconds)
         nRequestTime = max(nRequestTime + 2 * 60 * 1000000, nNow);
+
+        //Insert the request for the inventory in mapAskFor with the request time chosen
         mapAskFor.insert(make_pair(nRequestTime, inv));
     }
 

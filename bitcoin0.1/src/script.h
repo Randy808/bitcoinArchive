@@ -482,6 +482,7 @@ public:
     }
 
     //Reads in the operation code which determines the size of sequential bytes that should get returned from the iterator 'pc' (which is returned in vchRet)
+    //public key insertions to script should implicitly add 'OP_PUSHDATA2' to the buffer as per the CScript operator definition for '<<'
     bool GetOp(const_iterator& pc, opcodetype& opcodeRet, vector<unsigned char>& vchRet) const
     {
         //Pre-initialize the return value to an invalid op_code that will be returned if no valid conditions match
@@ -522,7 +523,6 @@ public:
         //SATOSHI_END
 
         //If the op code is less than the 4th op code for pushing data 
-        //So if the op code is a character
         if (opcode <= OP_PUSHDATA4)
         {
             //Make an int equal to the value of opcode

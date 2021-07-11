@@ -458,6 +458,7 @@ public:
         return fNewer;
     }
 
+    //Returns if a transaction is a coinbase (meaning it's the first transaction in a block and only has one input with no reference to a previous transaction output)
     bool IsCoinBase() const
     {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
@@ -1006,7 +1007,7 @@ public:
         return hash;
     }
 
-
+//TODO: Document
     bool WriteToDisk(bool fWriteTransactions, unsigned int& nFileRet, unsigned int& nBlockPosRet)
     {
         // Open history file to append
@@ -1251,6 +1252,7 @@ public:
 
     IMPLEMENT_SERIALIZE
     (
+        //SERIALIZE ALL PRIMITIVES USING function with beginning signatures: 'template<typename Stream> inline void Serialize(Stream& s,'
         if (!(nType & SER_GETHASH))
             READWRITE(nVersion);
 
